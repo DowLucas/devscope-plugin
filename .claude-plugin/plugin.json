@@ -1,5 +1,9 @@
 {
   "name": "devscope",
   "version": "0.1.0",
-  "description": "Real-time developer activity monitoring for Claude Code sessions"
+  "description": "Real-time developer activity monitoring for Claude Code sessions",
+  "author": {
+    "name": "Lucas Dow",
+    "email": "lucdow7@gmail.com"
+  }
 }

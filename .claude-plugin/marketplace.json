@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "devscope",
+  "description": "Real-time monitoring dashboard for Claude Code developer sessions",
+  "owner": {
+    "name": "Lucas Dow",
+    "email": "lucdow7@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "devscope",
+      "description": "Real-time developer activity monitoring for Claude Code sessions",
+      "version": "0.1.0",
+      "author": {
+        "name": "Lucas Dow",
+        "email": "lucdow7@gmail.com"
+      },
+      "source": ".",
+      "category": "monitoring",
+      "homepage": "https://github.com/DowLucas/devscope"
+    }
+  ]
+}
