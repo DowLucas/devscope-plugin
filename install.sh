@@ -308,13 +308,13 @@ main() {
   local server_url
   local selection
   selection="$(choose "Select your DevScope server:" \
-    "http://localhost:3001  (local development)" \
+    "http://localhost:6767  (local development)" \
     "http://localhost  (Docker with Caddy)" \
     "Custom URL")"
 
   case "$selection" in
-    *localhost:3001*)
-      server_url="http://localhost:3001"
+    *localhost:6767*)
+      server_url="http://localhost:6767"
       ;;
     *"Docker with Caddy"*)
       server_url="http://localhost"
@@ -322,7 +322,7 @@ main() {
     *)
       server_url="$(input_prompt "Enter your DevScope server URL:" "https://devscope.example.com")"
       if [[ -z "$server_url" ]]; then
-        server_url="http://localhost:3001"
+        server_url="http://localhost:6767"
         warn "No URL entered — defaulting to $server_url"
       fi
       ;;

@@ -46,7 +46,7 @@ The plugin reads configuration in this priority order:
 
 1. **Environment variables**: `DEVSCOPE_URL`, `DEVSCOPE_API_KEY`
 2. **Config file**: `~/.config/devscope/config` (or `$XDG_CONFIG_HOME/devscope/config`)
-3. **Default**: `http://localhost:3001`
+3. **Default**: `http://localhost:6767`
 
 ## Prerequisites
 
