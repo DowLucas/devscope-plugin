@@ -15,7 +15,7 @@
         "name": "Lucas Dow",
         "email": "lucdow7@gmail.com"
       },
-      "source": ".",
+      "source": "./",
       "category": "monitoring",
       "homepage": "https://github.com/DowLucas/devscope"
     }
