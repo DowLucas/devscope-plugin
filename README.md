@@ -9,7 +9,11 @@ This plugin hooks into Claude Code lifecycle events (session start/end, tool use
 ## Install
 
 ```bash
-claude plugin install github:DowLucas/devscope-plugin
+# Add the marketplace (one-time)
+claude plugin marketplace add DowLucas/devscope-plugin
+
+# Install the plugin
+claude plugin install devscope
 ```
 
 ## Setup
