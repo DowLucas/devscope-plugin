@@ -8,6 +8,16 @@ This plugin hooks into Claude Code lifecycle events (session start/end, tool use
 
 ## Install
 
+**One-liner (recommended):**
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/DowLucas/devscope-plugin/main/install.sh)
+```
+
+This interactive installer handles plugin installation, server configuration, and connection testing.
+
+**Manual install:**
+
 ```bash
 # Add the marketplace (one-time)
 claude plugin marketplace add DowLucas/devscope-plugin
