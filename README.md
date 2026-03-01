@@ -18,11 +18,7 @@ claude plugin install devscope
 
 ## Setup
 
-Run the interactive setup to configure your server URL:
-
-```bash
-~/.claude/plugins/devscope/scripts/setup.sh
-```
+Type `/devscope:setup` in Claude Code to interactively configure your server URL and API key.
 
 Or manually create `~/.config/devscope/config`:
 
