@@ -22,4 +22,4 @@ For changes to the backend, dashboard, or shared types, see the [main DevScope r
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
