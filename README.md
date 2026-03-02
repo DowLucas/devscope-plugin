@@ -4,14 +4,14 @@
 
 Claude Code plugin for [DevScope](https://github.com/DowLucas/devscope) — real-time developer session monitoring.
 
-This plugin hooks into Claude Code lifecycle events (session start/end, tool use, prompts, etc.) and sends them to a DevScope server for real-time visualization.
+This plugin hooks into Claude Code lifecycle events (session start/end, tool use, prompts, agents, etc.) and sends them to a DevScope server for real-time visualization and team insights.
 
 ## Install
 
 **One-liner (recommended):**
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/DowLucas/devscope-plugin/main/install.sh)
+curl -fsSL https://raw.githubusercontent.com/DowLucas/devscope-plugin/main/install.sh | bash
 ```
 
 This interactive installer handles plugin installation, server configuration, and connection testing.
@@ -50,16 +50,14 @@ The plugin reads configuration in this priority order:
 
 ## Prerequisites
 
-- [Claude Code](https://claude.ai/code) CLI
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 - `jq` (JSON processor)
 - `curl`
 - A running [DevScope](https://github.com/DowLucas/devscope) server
 
-## How It Works
+## What's Tracked
 
-The plugin registers bash hooks for Claude Code lifecycle events:
-
-| Event | What's Tracked |
+| Event | Data Sent |
 |---|---|
 | Session start/end | Session duration, permission mode |
 | Tool use | Tool name, duration, success/failure |
