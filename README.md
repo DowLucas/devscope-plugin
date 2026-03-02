@@ -1,20 +1,24 @@
 # DevScope Plugin
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Cloud](https://img.shields.io/badge/Cloud-devscope.sh-blueviolet)](https://devscope.sh)
+[![GitHub](https://img.shields.io/badge/GitHub-DowLucas%2Fdevscope-181717?logo=github)](https://github.com/DowLucas/devscope)
 
 Claude Code plugin for [DevScope](https://github.com/DowLucas/devscope) — real-time developer session monitoring.
 
 This plugin hooks into Claude Code lifecycle events (session start/end, tool use, prompts, agents, etc.) and sends them to a DevScope server for real-time visualization and team insights.
 
-## Install
+## Quick Start
 
-**One-liner (recommended):**
+**One-liner install:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DowLucas/devscope-plugin/main/install.sh | bash
 ```
 
-This interactive installer handles plugin installation, server configuration, and connection testing.
+The interactive installer handles plugin installation, server selection, and connection testing.
+
+> **Using the cloud?** Select `https://devscope.sh` during setup — no server to run. Sign up at [devscope.sh](https://devscope.sh) to get your API key.
 
 **Manual install:**
 
@@ -35,10 +39,18 @@ Or manually create `~/.config/devscope/config`:
 ```bash
 mkdir -p ~/.config/devscope
 cat > ~/.config/devscope/config <<EOF
-DEVSCOPE_URL=https://devscope.example.com
+DEVSCOPE_URL=https://devscope.sh
 DEVSCOPE_API_KEY=your-api-key-here
 EOF
 ```
+
+## Server Options
+
+| Option | URL | Description |
+|---|---|---|
+| **Cloud (recommended)** | `https://devscope.sh` | Hosted for you — sign up, get an API key, done |
+| Self-hosted (Docker) | `https://your-domain.com` | Run your own instance with [Docker](https://github.com/DowLucas/devscope#self-hosting-with-docker) |
+| Local development | `http://localhost:6767` | For contributors working on DevScope itself |
 
 ## Configuration
 
@@ -53,7 +65,7 @@ The plugin reads configuration in this priority order:
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 - `jq` (JSON processor)
 - `curl`
-- A running [DevScope](https://github.com/DowLucas/devscope) server
+- A DevScope server — [devscope.sh](https://devscope.sh) (cloud) or [self-hosted](https://github.com/DowLucas/devscope)
 
 ## What's Tracked
 
@@ -75,6 +87,12 @@ Works on **Linux** and **macOS**. Cross-platform compatibility is handled automa
 - SHA256 hashing (`sha256sum` / `shasum` / `openssl`)
 - Nanosecond timestamps (GNU date / python3 / perl fallback)
 - UUID generation (`/proc/sys/kernel/random/uuid` / `uuidgen`)
+
+## Links
+
+- [DevScope Cloud](https://devscope.sh) — hosted dashboard
+- [DevScope Server](https://github.com/DowLucas/devscope) — self-host the backend & dashboard
+- [Issues](https://github.com/DowLucas/devscope/issues) — bug reports & feature requests
 
 ## Contributing
 
