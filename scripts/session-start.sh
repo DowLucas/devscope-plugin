@@ -43,6 +43,7 @@ PAYLOAD=$(jq -n \
   --arg pm "$PERM_MODE" \
   --argjson cont "$CONTINUED" \
   --arg ccid "$CC_SESSION_ID" \
-  '{startType: $st, permissionMode: $pm, continued: $cont, claudeSessionId: $ccid}')
+  --arg priv "$DEVSCOPE_PRIVACY" \
+  '{startType: $st, permissionMode: $pm, continued: $cont, claudeSessionId: $ccid, privacyMode: $priv}')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "session.start" "$PAYLOAD"
