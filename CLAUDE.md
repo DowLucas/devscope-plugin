@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 The Claude Code plugin for [DevScope](https://github.com/DowLucas/devscope). It hooks into Claude Code lifecycle events and sends them to a DevScope server for real-time monitoring.
 
-This is a **standalone plugin repo** (`DowLucas/devscope-plugin`) that acts as both the plugin source and its own marketplace. There is also a mirrored copy at `packages/plugin/` in the main DevScope monorepo — changes should be kept in sync between both.
+This is a **standalone plugin repo** (`DowLucas/devscope-plugin`) that acts as both the plugin source and its own marketplace. There is no copy in the main DevScope monorepo.
 
 ## Plugin Structure
 
@@ -125,4 +125,9 @@ claude plugin disable devscope@devscope                  # Disable
 2. Test locally: `claude --plugin-dir .`
 3. Bump version in both `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
 4. Push to main
-5. Also update the mirrored copy in the main DevScope monorepo at `packages/plugin/`
+
+**Important — two version bumps required:** When releasing, bump the version in both:
+- `.claude-plugin/plugin.json` (`"version"` field)
+- `.claude-plugin/marketplace.json` (`plugins[0].version` field)
+
+Both must match. Without bumping both, `claude plugin update devscope` won't pick up new code.
