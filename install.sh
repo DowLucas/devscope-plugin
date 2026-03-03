@@ -355,6 +355,24 @@ main() {
     api_key="$(input_prompt "Enter your API key:" "your-api-key")"
   fi
 
+  # Privacy mode selection
+  echo ""
+  info "Privacy controls what data is sent to the server."
+  local privacy_mode
+  selection="$(choose "Select privacy mode:" \
+    "Redacted (default) — tool names, file paths, durations only" \
+    "Standard — adds prompt text and full tool inputs" \
+    "Full — adds Claude's response content")"
+
+  case "$selection" in
+    Standard*) privacy_mode="standard" ;;
+    Full*)     privacy_mode="full" ;;
+    *)         privacy_mode="redacted" ;;
+  esac
+
+  success "Privacy mode: $privacy_mode"
+  echo ""
+
   # Step 5: Write config
   local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/devscope"
   local config_file="${config_dir}/config"
@@ -368,6 +386,7 @@ main() {
     if [[ -n "$api_key" ]]; then
       echo "DEVSCOPE_API_KEY=${api_key}"
     fi
+    echo "DEVSCOPE_PRIVACY=${privacy_mode}"
   } > "$config_file"
 
   chmod 600 "$config_file"
@@ -396,7 +415,7 @@ main() {
   banner "DevScope installed!" "Start a Claude Code session to begin monitoring"
 
   info "Useful commands:"
-  printf '%b\n' "  ${DIM}  /devscope:setup    — reconfigure server URL / API key${RESET}"
+  printf '%b\n' "  ${DIM}  /devscope:setup    — reconfigure server URL, API key & privacy${RESET}"
   printf '%b\n' "  ${DIM}  claude plugin list  — verify plugin is installed${RESET}"
   echo ""
 }

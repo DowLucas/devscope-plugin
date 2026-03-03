@@ -54,7 +54,7 @@ _ds_timestamp() {
   echo "$ts"
 }
 
-# Privacy mode: "redacted" (default) or "full"
+# Privacy mode: "redacted" (default), "standard", or "full"
 DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-redacted}"
 
 # Sanitize tool input for privacy — extract only safe metadata keys

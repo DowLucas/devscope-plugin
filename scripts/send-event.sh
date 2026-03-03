@@ -74,11 +74,13 @@ CURL_ARGS=(-s -X POST "${DEVSCOPE_URL}/api/events"
   -w '%{http_code}'
   -o /dev/null)
 
+# Build curl config to avoid exposing API key in process listing
+CURL_CONFIG=""
 if [ -n "${DEVSCOPE_API_KEY:-}" ]; then
-  CURL_ARGS+=(-H "x-api-key: ${DEVSCOPE_API_KEY}")
+  CURL_CONFIG="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
 fi
 
-HTTP_CODE=$(curl "${CURL_ARGS[@]}" 2>/dev/null) || true
+HTTP_CODE=$(echo "$CURL_CONFIG" | curl --config - "${CURL_ARGS[@]}" 2>/dev/null) || true
 if [ -n "$HTTP_CODE" ] && [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "000" ]; then
   echo "[devscope] Event delivery failed (HTTP $HTTP_CODE) to ${DEVSCOPE_URL}" >&2
 fi

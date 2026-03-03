@@ -25,7 +25,7 @@ TOOL_NAME_SAFE=$(echo "$TOOL_NAME" | tr -cd 'a-zA-Z0-9_-')
 
 # Calculate duration from start timestamp
 DURATION_MS=0
-TIMING_DIR="/tmp/devscope-tool-times"
+TIMING_DIR="${HOME}/.cache/devscope/timings"
 TIMING_FILE="${TIMING_DIR}/${SESSION_ID_SAFE}_${TOOL_NAME_SAFE}"
 if [ -f "$TIMING_FILE" ]; then
   START_NS=$(cat "$TIMING_FILE")

@@ -12,7 +12,7 @@ CC_SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 
 # --- Session continuity state file ---
 GC_CACHE_DIR="${HOME}/.cache/devscope"
-mkdir -p "$GC_CACHE_DIR"
+mkdir -p -m 0700 "$GC_CACHE_DIR"
 CONTINUED=false
 
 if [ -n "$CWD" ] && [ -n "$CC_SESSION_ID" ]; then
@@ -25,6 +25,7 @@ if [ -n "$CWD" ] && [ -n "$CC_SESSION_ID" ]; then
   if [ "$START_TYPE" = "startup" ]; then
     # New logical session — write CC session_id to state file
     echo "$CC_SESSION_ID" > "$STATE_FILE"
+    chmod 600 "$STATE_FILE"
   else
     # clear/resume/compact — preserve existing DevScope session
     if [ -f "$STATE_FILE" ]; then
@@ -32,6 +33,7 @@ if [ -n "$CWD" ] && [ -n "$CC_SESSION_ID" ]; then
     else
       # No state file yet (edge case) — treat as new session
       echo "$CC_SESSION_ID" > "$STATE_FILE"
+      chmod 600 "$STATE_FILE"
     fi
   fi
 fi
