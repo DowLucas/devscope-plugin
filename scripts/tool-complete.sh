@@ -5,15 +5,19 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPT_DIR/_helpers.sh"
 INPUT=$(cat)
 
-# Extract fields — TOOL_INPUT extracted separately to preserve JSON quoting
-eval "$(echo "$INPUT" | jq -r '
-  @sh "TOOL_NAME=\(.tool_name // "unknown")",
-  @sh "HOOK_EVENT=\(.hook_event_name // "PostToolUse")",
-  @sh "SESSION_ID=\(.session_id // "")",
-  @sh "AGENT_ID=\(.agent_id // "")",
-  @sh "ERROR_MSG=\(.error // "" | tostring | .[:100])"
-' | tr ',' '\n')"
-TOOL_INPUT=$(echo "$INPUT" | jq -c '.tool_input // null')
+# Extract fields safely — no eval
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // "unknown"')
+HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // "PostToolUse"')
+SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
+AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // ""')
+ERROR_MSG=$(echo "$INPUT" | jq -r '.error // "" | tostring | .[:100]')
+
+# Privacy-aware tool input
+if [ "$DEVSCOPE_PRIVACY" = "full" ]; then
+  TOOL_INPUT=$(echo "$INPUT" | jq -c '.tool_input // null')
+else
+  TOOL_INPUT=$(_ds_sanitize_tool_input "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')")
+fi
 
 # Sanitize for safe temp file paths
 SESSION_ID_SAFE=$(echo "$SESSION_ID" | tr -cd 'a-zA-Z0-9_-')

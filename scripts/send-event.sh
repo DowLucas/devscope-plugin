@@ -58,16 +58,29 @@ EVENT=$(jq -n \
     payload: $payload
   }')
 
+# Warn if sending API key over unencrypted HTTP to non-local server
+if [ -n "${DEVSCOPE_API_KEY:-}" ]; then
+  case "$DEVSCOPE_URL" in
+    https://*) ;;
+    http://localhost*|http://127.0.0.1*) ;;
+    *) echo "[devscope] WARNING: Sending API key over unencrypted HTTP to ${DEVSCOPE_URL}" >&2 ;;
+  esac
+fi
+
 CURL_ARGS=(-s -X POST "${DEVSCOPE_URL}/api/events"
   -H "Content-Type: application/json"
   -d "$EVENT"
   --max-time 5
+  -w '%{http_code}'
   -o /dev/null)
 
 if [ -n "${DEVSCOPE_API_KEY:-}" ]; then
   CURL_ARGS+=(-H "x-api-key: ${DEVSCOPE_API_KEY}")
 fi
 
-curl "${CURL_ARGS[@]}" 2>/dev/null || true
+HTTP_CODE=$(curl "${CURL_ARGS[@]}" 2>/dev/null) || true
+if [ -n "$HTTP_CODE" ] && [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "000" ]; then
+  echo "[devscope] Event delivery failed (HTTP $HTTP_CODE) to ${DEVSCOPE_URL}" >&2
+fi
 
 exit 0

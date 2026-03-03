@@ -94,6 +94,58 @@ Works on **Linux** and **macOS**. Cross-platform compatibility is handled automa
 - [DevScope Server](https://github.com/DowLucas/devscope) — self-host the backend & dashboard
 - [Issues](https://github.com/DowLucas/devscope/issues) — bug reports & feature requests
 
+## Troubleshooting
+
+### Events not appearing in dashboard
+
+**Missing git identity** — the plugin derives your developer ID from `git config user.email`. If it's not set, events can't be attributed:
+
+```bash
+git config --global user.email "you@example.com"
+git config --global user.name "Your Name"
+```
+
+The installer checks for this, but if you skipped the warning, set them now.
+
+**Config not loaded** — verify your config:
+
+```bash
+cat ~/.config/devscope/config
+# Should show DEVSCOPE_URL and DEVSCOPE_API_KEY
+```
+
+**Server unreachable** — test the connection:
+
+```bash
+curl -sf "$(grep DEVSCOPE_URL ~/.config/devscope/config | cut -d= -f2)/api/health"
+```
+
+**Invalid API key** — generate a new key from Dashboard > Settings > API Keys.
+
+### Plugin not running
+
+Check that the plugin is installed and enabled:
+
+```bash
+claude plugin list
+```
+
+If missing, reinstall:
+
+```bash
+claude plugin marketplace add DowLucas/devscope-plugin
+claude plugin install devscope
+```
+
+### Update not taking effect
+
+Claude Code caches plugins by version. After updating:
+
+```bash
+claude plugin update devscope
+# Restart Claude Code for changes to take effect
+```
+
 ## Contributing
 
 For plugin-specific changes, open a PR here. For server/dashboard changes, see the [main DevScope repo](https://github.com/DowLucas/devscope).

@@ -6,8 +6,15 @@
 if [ -z "${DEVSCOPE_URL:-}" ]; then
   _DS_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/devscope/config"
   if [ -f "$_DS_CONFIG" ]; then
-    # shellcheck disable=SC1090
-    . "$_DS_CONFIG"
+    while IFS='=' read -r key value; do
+      key=$(echo "$key" | tr -d ' ')
+      value=$(echo "$value" | sed 's/^"//;s/"$//' | sed "s/^'//;s/'$//")
+      case "$key" in
+        DEVSCOPE_URL) DEVSCOPE_URL="$value" ;;
+        DEVSCOPE_API_KEY) DEVSCOPE_API_KEY="$value" ;;
+        DEVSCOPE_PRIVACY) DEVSCOPE_PRIVACY="$value" ;;
+      esac
+    done < <(grep -v '^#' "$_DS_CONFIG" | grep -v '^$')
   fi
 fi
 DEVSCOPE_URL="${DEVSCOPE_URL:-http://localhost:6767}"
@@ -40,9 +47,33 @@ _ds_now_ns() {
 _ds_timestamp() {
   local ts
   ts=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ 2>/dev/null)
-  # macOS BSD date doesn't support %N — check for non-digit in milliseconds
-  if echo "$ts" | grep -qE '\.[^0-9]'; then
+  # macOS BSD date doesn't support %N — verify milliseconds are digits
+  if ! echo "$ts" | grep -qE '\.[0-9]{3}Z$'; then
     ts=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
   fi
   echo "$ts"
+}
+
+# Privacy mode: "redacted" (default) or "full"
+DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-redacted}"
+
+# Sanitize tool input for privacy — extract only safe metadata keys
+_ds_sanitize_tool_input() {
+  local tool_name="$1"
+  local tool_input="$2"
+
+  case "$tool_name" in
+    Read|Write|Edit)
+      echo "$tool_input" | jq -c '{file_path: .file_path} // {}' 2>/dev/null || echo '{}'
+      ;;
+    Grep|Glob)
+      echo "$tool_input" | jq -c '{pattern: .pattern, path: .path} // {}' 2>/dev/null || echo '{}'
+      ;;
+    Bash)
+      echo '{"redacted": true}'
+      ;;
+    *)
+      echo '{"redacted": true}'
+      ;;
+  esac
 }

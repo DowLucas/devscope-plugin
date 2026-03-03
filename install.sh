@@ -262,8 +262,23 @@ main() {
   if command -v jq &>/dev/null; then
     success "jq found"
   else
-    warn "jq not found — plugin works without it but recommended"
-    warn "Install: https://jqlang.github.io/jq/download/"
+    fail "jq not found — required for plugin to work"
+    fail "Install: brew install jq (macOS) or apt install jq (Linux)"
+    prereqs_ok=false
+  fi
+
+  if git config user.email &>/dev/null && [[ -n "$(git config user.email)" ]]; then
+    success "git user.email set ($(git config user.email))"
+  else
+    warn "git user.email not set — required for developer identity"
+    warn "Set it: git config --global user.email \"you@example.com\""
+  fi
+
+  if git config user.name &>/dev/null && [[ -n "$(git config user.name)" ]]; then
+    success "git user.name set ($(git config user.name))"
+  else
+    warn "git user.name not set — used for display name in dashboard"
+    warn "Set it: git config --global user.name \"Your Name\""
   fi
 
   echo ""
