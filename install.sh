@@ -414,9 +414,19 @@ main() {
   # Step 7: Success banner
   banner "DevScope installed!" "Start a Claude Code session to begin monitoring"
 
+  # Step 8: Enable marketplace auto-update
+  info "Enabling marketplace auto-update..."
+  if claude plugin marketplace auto-update DowLucas/devscope-plugin --enable 2>/dev/null; then
+    success "Marketplace auto-update enabled"
+  else
+    warn "Could not enable auto-update (enable manually via /plugin → Marketplaces)"
+  fi
+  echo ""
+
   info "Useful commands:"
   printf '%b\n' "  ${DIM}  /devscope:setup    — reconfigure server URL, API key & privacy${RESET}"
   printf '%b\n' "  ${DIM}  claude plugin list  — verify plugin is installed${RESET}"
+  printf '%b\n' "  ${DIM}  claude plugin update devscope — update to latest version${RESET}"
   echo ""
 }
 
