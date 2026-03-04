@@ -15,10 +15,15 @@ if [ -n "$CWD" ] && [ -n "$AGENT_ID" ]; then
   HASH=$(_ds_project_hash "$CWD")
   STACK_FILE="${HOME}/.cache/devscope/${HASH}.agents"
   if [ -f "$STACK_FILE" ]; then
-    # Remove this agent from the stack
+    # Remove only the last (most recent) occurrence of this agent (LIFO pop)
     TEMP=$(mktemp)
-    grep -v "^${AGENT_ID}$" "$STACK_FILE" > "$TEMP" || true
-    mv "$TEMP" "$STACK_FILE"
+    LAST_LINE=$(grep -n "^${AGENT_ID}$" "$STACK_FILE" | tail -1 | cut -d: -f1)
+    if [ -n "$LAST_LINE" ]; then
+      sed "${LAST_LINE}d" "$STACK_FILE" > "$TEMP"
+      mv "$TEMP" "$STACK_FILE"
+    else
+      rm -f "$TEMP"
+    fi
     # New top of stack is the parent (the agent we're returning to)
     PARENT_AGENT_ID=$(tail -1 "$STACK_FILE" 2>/dev/null || echo "")
     # Clean up empty stack file

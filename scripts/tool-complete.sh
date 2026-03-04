@@ -58,7 +58,12 @@ if [ "$SUCCESS" = "true" ] && { [ "$TOOL_NAME" = "Write" ] || [ "$TOOL_NAME" = "
   CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
   if [ -n "$FILE_PATH" ] && [ -n "$CWD" ]; then
     _FC_HASH=$(_ds_project_hash "$CWD")
-    echo "$FILE_PATH" >> "${HOME}/.cache/devscope/${_FC_HASH}.files"
+    mkdir -p "${HOME}/.cache/devscope"
+    if [ "$DEVSCOPE_PRIVACY" = "redacted" ]; then
+      echo "[redacted]" >> "${HOME}/.cache/devscope/${_FC_HASH}.files"
+    else
+      echo "$FILE_PATH" >> "${HOME}/.cache/devscope/${_FC_HASH}.files"
+    fi
   fi
 fi
 

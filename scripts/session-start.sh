@@ -12,9 +12,16 @@ CC_SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 MODEL=$(echo "$INPUT" | jq -r '.model // ""')
 
 # Git metadata (local operations, fast)
-GIT_BRANCH=$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-GIT_COMMIT=$(git -C "$CWD" rev-parse HEAD 2>/dev/null || echo "")
-GIT_REMOTE=$(git -C "$CWD" remote get-url origin 2>/dev/null || echo "")
+GIT_BRANCH=""
+GIT_COMMIT=""
+GIT_REMOTE=""
+if [ -n "$CWD" ]; then
+  GIT_BRANCH=$(git -C "$CWD" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  GIT_COMMIT=$(git -C "$CWD" rev-parse HEAD 2>/dev/null || echo "")
+  GIT_REMOTE=$(git -C "$CWD" remote get-url origin 2>/dev/null || echo "")
+  # Strip embedded credentials (user[:pass]@) from remote URL
+  GIT_REMOTE=$(echo "$GIT_REMOTE" | sed -E 's,://[^@/]+@,://,')
+fi
 # Redact remote URL in privacy mode — may leak org/repo info
 [ "$DEVSCOPE_PRIVACY" = "redacted" ] && GIT_REMOTE=""
 
