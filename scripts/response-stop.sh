@@ -8,7 +8,7 @@ INPUT=$(cat)
 LAST_MSG=$(echo "$INPUT" | jq -r '.last_assistant_message // ""' 2>/dev/null)
 RESPONSE_LENGTH=${#LAST_MSG}
 
-if [ "$DEVSCOPE_PRIVACY" = "full" ]; then
+if [ "$DEVSCOPE_PRIVACY" = "open" ]; then
   PAYLOAD=$(jq -n \
     --argjson rl "$RESPONSE_LENGTH" \
     --arg rt "$LAST_MSG" \

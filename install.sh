@@ -360,14 +360,14 @@ main() {
   info "Privacy controls what data is sent to the server."
   local privacy_mode
   selection="$(choose "Select privacy mode:" \
-    "Redacted (default) — tool names, file paths, durations only" \
-    "Standard — adds prompt text and full tool inputs" \
-    "Full — adds Claude's response content")"
+    "Standard (default) — adds prompt text and full tool inputs" \
+    "Private — tool names, file paths, durations only" \
+    "Open — adds Claude's response content")"
 
   case "$selection" in
-    Standard*) privacy_mode="standard" ;;
-    Full*)     privacy_mode="full" ;;
-    *)         privacy_mode="redacted" ;;
+    Private*)  privacy_mode="private" ;;
+    Open*)     privacy_mode="open" ;;
+    *)         privacy_mode="standard" ;;
   esac
 
   success "Privacy mode: $privacy_mode"

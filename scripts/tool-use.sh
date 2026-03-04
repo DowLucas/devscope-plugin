@@ -11,7 +11,7 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // ""')
 
 # Privacy-aware tool input
-if [ "$DEVSCOPE_PRIVACY" = "standard" ] || [ "$DEVSCOPE_PRIVACY" = "full" ]; then
+if [ "$DEVSCOPE_PRIVACY" = "standard" ] || [ "$DEVSCOPE_PRIVACY" = "open" ]; then
   TOOL_INPUT=$(echo "$INPUT" | jq -c '.tool_input // null')
 else
   TOOL_INPUT=$(_ds_sanitize_tool_input "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')")

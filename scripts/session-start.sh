@@ -23,7 +23,7 @@ if [ -n "$CWD" ]; then
   GIT_REMOTE=$(echo "$GIT_REMOTE" | sed -E 's,://[^@/]+@,://,')
 fi
 # Redact remote URL in privacy mode — may leak org/repo info
-[ "$DEVSCOPE_PRIVACY" = "redacted" ] && GIT_REMOTE=""
+[ "$DEVSCOPE_PRIVACY" = "private" ] && GIT_REMOTE=""
 
 # --- Session continuity state file ---
 GC_CACHE_DIR="${HOME}/.cache/devscope"

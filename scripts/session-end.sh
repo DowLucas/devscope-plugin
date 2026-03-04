@@ -23,8 +23,8 @@ if [ -n "$CWD" ]; then
   _GC_HASH=$(_ds_project_hash "$CWD")
   _GC_FILES="${HOME}/.cache/devscope/${_GC_HASH}.files"
   if [ -f "$_GC_FILES" ]; then
-    if [ "$DEVSCOPE_PRIVACY" = "redacted" ]; then
-      # Only send basenames in redacted mode
+    if [ "$DEVSCOPE_PRIVACY" = "private" ]; then
+      # Only send basenames in private mode
       FILES_CHANGED=$(sort -u "$_GC_FILES" | head -200 | while read -r fp; do basename "$fp"; done | jq -R . | jq -sc '.')
     else
       FILES_CHANGED=$(sort -u "$_GC_FILES" | head -200 | jq -R . | jq -sc '.')

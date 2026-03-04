@@ -15,7 +15,7 @@ ERROR_MSG_FULL=$(echo "$INPUT" | jq -r '.error // "" | tostring | .[:500]')
 IS_INTERRUPT=$(echo "$INPUT" | jq -r '.is_interrupt // false')
 
 # Privacy-aware tool input
-if [ "$DEVSCOPE_PRIVACY" = "full" ]; then
+if [ "$DEVSCOPE_PRIVACY" = "open" ]; then
   TOOL_INPUT=$(echo "$INPUT" | jq -c '.tool_input // null')
 else
   TOOL_INPUT=$(_ds_sanitize_tool_input "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')")
@@ -39,8 +39,8 @@ fi
 if [ "$HOOK_EVENT" = "PostToolUseFailure" ]; then
   SUCCESS=false
   EVENT_TYPE="tool.fail"
-  # Use full error in standard/full mode, short in redacted mode
-  if [ "$DEVSCOPE_PRIVACY" = "redacted" ]; then
+  # Use full error in standard/open mode, short in private mode
+  if [ "$DEVSCOPE_PRIVACY" = "private" ]; then
     ERROR_MSG="$ERROR_MSG_SHORT"
   else
     ERROR_MSG="$ERROR_MSG_FULL"
@@ -58,7 +58,7 @@ if [ "$SUCCESS" = "true" ] && { [ "$TOOL_NAME" = "Write" ] || [ "$TOOL_NAME" = "
   if [ -n "$FILE_PATH" ] && [ -n "$CWD" ]; then
     _FC_HASH=$(_ds_project_hash "$CWD")
     mkdir -p "${HOME}/.cache/devscope"
-    if [ "$DEVSCOPE_PRIVACY" = "redacted" ]; then
+    if [ "$DEVSCOPE_PRIVACY" = "private" ]; then
       _FILE_HASH=$(_ds_sha256 "$FILE_PATH")
       echo "[redacted:${_FILE_HASH:0:12}]" >> "${HOME}/.cache/devscope/${_FC_HASH}.files"
     else

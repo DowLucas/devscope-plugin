@@ -9,7 +9,7 @@ PROMPT=$(echo "$INPUT" | jq -r '.prompt // ""')
 PROMPT_LEN=${#PROMPT}
 IS_CONT=$(echo "$INPUT" | jq -r '.is_continuation // false')
 
-if [ "$DEVSCOPE_PRIVACY" = "standard" ] || [ "$DEVSCOPE_PRIVACY" = "full" ]; then
+if [ "$DEVSCOPE_PRIVACY" = "standard" ] || [ "$DEVSCOPE_PRIVACY" = "open" ]; then
   PAYLOAD=$(jq -n \
     --argjson pl "$PROMPT_LEN" \
     --argjson ic "$IS_CONT" \

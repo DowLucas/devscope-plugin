@@ -67,6 +67,29 @@ The plugin reads configuration in this priority order:
 - `curl`
 - A DevScope server — [devscope.sh](https://devscope.sh) (cloud) or [self-hosted](https://github.com/DowLucas/devscope)
 
+## Privacy Modes
+
+Control what data is sent to the server with the `DEVSCOPE_PRIVACY` setting in `~/.config/devscope/config`:
+
+| Mode | What's sent | Use when |
+|---|---|---|
+| `private` | Tool names, file paths, durations only | Maximum privacy — no prompt or response content |
+| `standard` | Everything in `private` + prompt text + full tool inputs | **Default** — good balance for team insights |
+| `open` | Everything in `standard` + Claude's response text | Full session replay in the dashboard |
+
+**Set your privacy mode:**
+
+```bash
+# In ~/.config/devscope/config
+DEVSCOPE_PRIVACY=standard   # default
+DEVSCOPE_PRIVACY=private    # metadata only
+DEVSCOPE_PRIVACY=open       # include response text
+```
+
+Or run `/devscope:setup` in Claude Code to reconfigure interactively.
+
+> **Backwards compatibility**: Old values `redacted` and `full` are automatically mapped to `private` and `open` respectively — no config changes needed.
+
 ## What's Tracked
 
 | Event | Data Sent |

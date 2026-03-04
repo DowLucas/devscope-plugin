@@ -72,8 +72,14 @@ _ds_tac() {
   fi
 }
 
-# Privacy mode: "redacted" (default), "standard", or "full"
-DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-redacted}"
+# Privacy mode: "private", "standard" (default), or "open"
+DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-standard}"
+
+# Backwards-compat: map old values to new names silently
+case "$DEVSCOPE_PRIVACY" in
+  redacted) DEVSCOPE_PRIVACY="private" ;;
+  full)     DEVSCOPE_PRIVACY="open" ;;
+esac
 
 # Sanitize tool input for privacy — extract only safe metadata keys
 _ds_sanitize_tool_input() {

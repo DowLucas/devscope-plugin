@@ -33,14 +33,16 @@ done
 # Privacy mode
 echo ""
 echo "Privacy mode controls what data is sent to the server."
-echo "  redacted — Only metadata (tool names, file paths, durations). No prompt text or command content."
-echo "  full    — Full prompt text and tool input included."
+echo "  private  — Only metadata (tool names, file paths, durations). No prompt text or command content."
+echo "  standard — Adds prompt text and full tool inputs. (default)"
+echo "  open     — Adds Claude's response content."
 echo ""
-read -rp "Privacy mode [redacted]: " privacy
-privacy="${privacy:-redacted}"
-if [ "$privacy" != "full" ]; then
-  privacy="redacted"
-fi
+read -rp "Privacy mode [standard]: " privacy
+privacy="${privacy:-standard}"
+case "$privacy" in
+  private|standard|open) ;;
+  *) privacy="standard" ;;
+esac
 
 # Write config
 mkdir -p "$CONFIG_DIR"
