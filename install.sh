@@ -414,13 +414,17 @@ main() {
   # Step 7: Success banner
   banner "DevScope installed!" "Start a Claude Code session to begin monitoring"
 
-  # Step 8: Enable marketplace auto-update
-  info "Enabling marketplace auto-update..."
-  if claude plugin marketplace auto-update DowLucas/devscope-plugin --enable 2>/dev/null; then
-    success "Marketplace auto-update enabled"
-  else
-    warn "Could not enable auto-update (enable manually via /plugin → Marketplaces)"
-  fi
+  # Step 8: Prompt to enable marketplace auto-update (UI-only, no CLI command available)
+  info "DevScope updates are released regularly with bug fixes and new features."
+  info "Auto-update must be enabled manually through the Claude Code plugin UI."
+  echo ""
+  warn "ACTION REQUIRED: Enable automatic updates for DevScope"
+  printf '%b\n' "  ${DIM}1. Open Claude Code and run: /plugin${RESET}"
+  printf '%b\n' "  ${DIM}2. Go to the Marketplaces tab${RESET}"
+  printf '%b\n' "  ${DIM}3. Select 'devscope' from the list${RESET}"
+  printf '%b\n' "  ${DIM}4. Choose 'Enable auto-update'${RESET}"
+  echo ""
+  confirm_prompt "I understand — I will enable auto-update in the plugin UI" || true
   echo ""
 
   info "Useful commands:"
