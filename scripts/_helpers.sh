@@ -54,6 +54,24 @@ _ds_timestamp() {
   echo "$ts"
 }
 
+# Compute project hash for session-scoped state files
+# Usage: PROJECT_HASH=$(_ds_project_hash "$CWD")
+_ds_project_hash() {
+  local cwd="$1"
+  local email
+  email=$(git -C "$cwd" config user.email 2>/dev/null || echo "${USER}@local")
+  _ds_sha256 "${email}:${cwd}:${PPID}"
+}
+
+# Cross-platform reverse file (tac on Linux, tail -r on macOS)
+_ds_tac() {
+  if command -v tac >/dev/null 2>&1; then
+    tac "$@"
+  else
+    tail -r "$@"
+  fi
+}
+
 # Privacy mode: "redacted" (default), "standard", or "full"
 DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-redacted}"
 

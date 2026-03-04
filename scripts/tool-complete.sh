@@ -10,7 +10,9 @@ TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // "unknown"')
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // "PostToolUse"')
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // ""')
-ERROR_MSG=$(echo "$INPUT" | jq -r '.error // "" | tostring | .[:100]')
+ERROR_MSG_SHORT=$(echo "$INPUT" | jq -r '.error // "" | tostring | .[:100]')
+ERROR_MSG_FULL=$(echo "$INPUT" | jq -r '.error // "" | tostring | .[:500]')
+IS_INTERRUPT=$(echo "$INPUT" | jq -r '.is_interrupt // false')
 
 # Privacy-aware tool input
 if [ "$DEVSCOPE_PRIVACY" = "full" ]; then
@@ -37,10 +39,27 @@ fi
 if [ "$HOOK_EVENT" = "PostToolUseFailure" ]; then
   SUCCESS=false
   EVENT_TYPE="tool.fail"
+  # Use full error in standard/full mode, short in redacted mode
+  if [ "$DEVSCOPE_PRIVACY" = "redacted" ]; then
+    ERROR_MSG="$ERROR_MSG_SHORT"
+  else
+    ERROR_MSG="$ERROR_MSG_FULL"
+  fi
 else
   SUCCESS=true
   EVENT_TYPE="tool.complete"
   ERROR_MSG=""
+  IS_INTERRUPT="false"
+fi
+
+# Track file changes for Write/Edit tools
+if [ "$SUCCESS" = "true" ] && { [ "$TOOL_NAME" = "Write" ] || [ "$TOOL_NAME" = "Edit" ]; }; then
+  FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+  CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+  if [ -n "$FILE_PATH" ] && [ -n "$CWD" ]; then
+    _FC_HASH=$(_ds_project_hash "$CWD")
+    echo "$FILE_PATH" >> "${HOME}/.cache/devscope/${_FC_HASH}.files"
+  fi
 fi
 
 PAYLOAD=$(jq -n \
@@ -50,9 +69,11 @@ PAYLOAD=$(jq -n \
   --arg em "$ERROR_MSG" \
   --arg ai "$AGENT_ID" \
   --argjson ti "${TOOL_INPUT:-null}" \
+  --argjson intr "$IS_INTERRUPT" \
   '{toolName: $tn, success: $s, duration: $d}
    | if $em != "" then . + {errorMessage: $em} else . end
    | if $ai != "" then . + {agentId: $ai} else . end
-   | if $ti != null then . + {toolInput: $ti} else . end')
+   | if $ti != null then . + {toolInput: $ti} else . end
+   | if $intr == true then . + {isInterrupt: true} else . end')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "$EVENT_TYPE" "$PAYLOAD"
