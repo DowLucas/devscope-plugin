@@ -1,0 +1,152 @@
+diff --git a/packages/dashboard/src/App.tsx b/packages/dashboard/src/App.tsx
+index ca0eb65..50b9dce 100644
+--- a/packages/dashboard/src/App.tsx
++++ b/packages/dashboard/src/App.tsx
+@@ -27,33 +27,52 @@ import { useActivityStore, type ActiveAgent } from "@/stores/activityStore";
+ import { apiFetch } from "@/lib/api";
+ import type { Session } from "@devscope/shared";
+ 
++function fetchDashboardData(
++  setDevelopers: (devs: any) => void,
++  setActiveSessions: (sessions: any) => void,
++  setActiveAgents: (agents: any) => void,
++  setEvents: (events: any) => void,
++) {
++  apiFetch("/api/developers")
++    .then((r) => r.json())
++    .then(setDevelopers)
++    .catch(console.error);
++
++  apiFetch("/api/sessions/active")
++    .then((r) => r.json())
++    .then((sessions: (Session & { activeAgents?: ActiveAgent[] })[]) => {
++      const agents = sessions.flatMap((s) => s.activeAgents ?? []);
++      setActiveAgents(agents);
++      setActiveSessions(sessions);
++    })
++    .catch(console.error);
++
++  apiFetch("/api/events/recent?limit=50")
++    .then((r) => r.json())
++    .then(setEvents)
++    .catch(console.error);
++}
++
+ function AppContent() {
+   useDevscopeSocket();
+ 
+   const { setDevelopers, setActiveSessions, setActiveAgents, setEvents } = useActivityStore();
+   const fetchGeneration = useActivityStore((s) => s.fetchGeneration);
+ 
++  // Eagerly fetch historic data on mount so the dashboard is not empty
++  // while waiting for the WebSocket connection to establish.
+   useEffect(() => {
+-    if (fetchGeneration === 0) return;
++    fetchDashboardData(setDevelopers, setActiveSessions, setActiveAgents, setEvents);
++  }, [setDevelopers, setActiveSessions, setActiveAgents, setEvents]);
+ 
+-    apiFetch("/api/developers")
+-      .then((r) => r.json())
+-      .then(setDevelopers)
+-      .catch(console.error);
+-
+-    apiFetch("/api/sessions/active")
+-      .then((r) => r.json())
+-      .then((sessions: (Session & { activeAgents?: ActiveAgent[] })[]) => {
+-        const agents = sessions.flatMap((s) => s.activeAgents ?? []);
+-        setActiveAgents(agents);
+-        setActiveSessions(sessions);
+-      })
+-      .catch(console.error);
+-
+-    apiFetch("/api/events/recent?limit=50")
+-      .then((r) => r.json())
+-      .then(setEvents)
+-      .catch(console.error);
++  // Re-fetch on WebSocket (re)connect to pick up any events that arrived
++  // while disconnected. Skip generation 0 (handled by mount effect above)
++  // and generation 1 (the initial WS connect, which races with the mount
++  // fetch — setEvents now merges so a duplicate fetch is harmless but the
++  // first connect is redundant with the mount fetch).
++  useEffect(() => {
++    if (fetchGeneration <= 1) return;
++    fetchDashboardData(setDevelopers, setActiveSessions, setActiveAgents, setEvents);
+   }, [fetchGeneration, setDevelopers, setActiveSessions, setActiveAgents, setEvents]);
+ 
+   return (
+diff --git a/packages/dashboard/src/components/Layout.tsx b/packages/dashboard/src/components/Layout.tsx
+index f3c187b..4365d7c 100644
+--- a/packages/dashboard/src/components/Layout.tsx
++++ b/packages/dashboard/src/components/Layout.tsx
+@@ -1,4 +1,4 @@
+-import { type ReactNode, useState, useEffect } from "react";
++import { type ReactNode } from "react";
+ import { Link, useLocation } from "wouter";
+ import { Activity, Users, GitBranch, BarChart3, AlertTriangle, FolderOpen, Sparkles, Clock, Settings, LogOut, UsersRound, Mail, Cog, TrendingUp, BookOpen } from "lucide-react";
+ import { useActivityStore } from "@/stores/activityStore";
+@@ -33,26 +33,14 @@ function useNavBadges(): Record<string, NavBadge | null> {
+   const developers = useActivityStore((s) => s.developers);
+   const events = useActivityStore((s) => s.events);
+ 
+-  // Tick every 10s so the "last minute" count expires stale events
+-  const [now, setNow] = useState(Date.now);
+-  useEffect(() => {
+-    const id = setInterval(() => setNow(Date.now()), 10_000);
+-    return () => clearInterval(id);
+-  }, []);
+-
+-  const oneMinuteAgo = now - 60_000;
+-  const recentEventCount = events.filter(
+-    (e) => new Date(e.timestamp).getTime() > oneMinuteAgo
+-  ).length;
+-
+   const unacknowledgedCount = alerts.filter((a) => !a.acknowledged).length;
+   const activeDeveloperCount = developers.filter(
+     (d) => (d.activeSessions ?? 0) > 0
+   ).length;
+ 
+   return {
+-    "/dashboard": recentEventCount > 0
+-      ? { count: recentEventCount, variant: "info" } : null,
++    "/dashboard": events.length > 0
++      ? { count: events.length, variant: "info" } : null,
+     "/dashboard/topology": activeSessions.length > 0
+       ? { count: activeSessions.length, variant: "success" } : null,
+     "/dashboard/sessions": activeSessions.length > 0
+diff --git a/packages/dashboard/src/stores/activityStore.ts b/packages/dashboard/src/stores/activityStore.ts
+index a17c02c..78d46a8 100644
+--- a/packages/dashboard/src/stores/activityStore.ts
++++ b/packages/dashboard/src/stores/activityStore.ts
+@@ -80,7 +80,31 @@ export const useActivityStore = create<ActivityState>((set) => ({
+     }),
+   setConnected: (connected) => set({ connected }),
+   bumpFetchGeneration: () => set((state) => ({ fetchGeneration: state.fetchGeneration + 1 })),
+-  setEvents: (events) => set({ events }),
++  setEvents: (incoming) =>
++    set((state) => {
++      // Merge historic (API) events with any real-time (WS) events already
++      // in the store, deduplicating by id and keeping newest-first order.
++      const seen = new Set<string>();
++      const merged: DevscopeEvent[] = [];
++      // Real-time events first (they may be newer than the API snapshot)
++      for (const e of state.events) {
++        if (!seen.has(e.id)) {
++          seen.add(e.id);
++          merged.push(e);
++        }
++      }
++      for (const e of incoming) {
++        if (!seen.has(e.id)) {
++          seen.add(e.id);
++          merged.push(e);
++        }
++      }
++      merged.sort(
++        (a, b) =>
++          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
++      );
++      return { events: merged.slice(0, MAX_EVENTS) };
++    }),
+ 
+   updateSession: (sessionId, status) =>
+     set((state) => ({
