@@ -49,7 +49,6 @@ else
   SUCCESS=true
   EVENT_TYPE="tool.complete"
   ERROR_MSG=""
-  IS_INTERRUPT="false"
 fi
 
 # Track file changes for Write/Edit tools

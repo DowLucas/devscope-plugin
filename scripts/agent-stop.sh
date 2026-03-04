@@ -17,7 +17,7 @@ if [ -n "$CWD" ] && [ -n "$AGENT_ID" ]; then
   if [ -f "$STACK_FILE" ]; then
     # Remove only the last (most recent) occurrence of this agent (LIFO pop)
     TEMP=$(mktemp)
-    LAST_LINE=$(grep -n "^${AGENT_ID}$" "$STACK_FILE" | tail -1 | cut -d: -f1)
+    LAST_LINE=$(grep -n "^${AGENT_ID}$" "$STACK_FILE" | tail -1 | cut -d: -f1 || true)
     if [ -n "$LAST_LINE" ]; then
       sed "${LAST_LINE}d" "$STACK_FILE" > "$TEMP"
       mv "$TEMP" "$STACK_FILE"
