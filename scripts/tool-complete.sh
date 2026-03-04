@@ -59,7 +59,8 @@ if [ "$SUCCESS" = "true" ] && { [ "$TOOL_NAME" = "Write" ] || [ "$TOOL_NAME" = "
     _FC_HASH=$(_ds_project_hash "$CWD")
     mkdir -p "${HOME}/.cache/devscope"
     if [ "$DEVSCOPE_PRIVACY" = "redacted" ]; then
-      echo "[redacted]" >> "${HOME}/.cache/devscope/${_FC_HASH}.files"
+      _FILE_HASH=$(_ds_sha256 "$FILE_PATH")
+      echo "[redacted:${_FILE_HASH:0:12}]" >> "${HOME}/.cache/devscope/${_FC_HASH}.files"
     else
       echo "$FILE_PATH" >> "${HOME}/.cache/devscope/${_FC_HASH}.files"
     fi
@@ -78,6 +79,6 @@ PAYLOAD=$(jq -n \
    | if $em != "" then . + {errorMessage: $em} else . end
    | if $ai != "" then . + {agentId: $ai} else . end
    | if $ti != null then . + {toolInput: $ti} else . end
-   | if $intr == true then . + {isInterrupt: true} else . end')
+   | . + {isInterrupt: $intr}')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "$EVENT_TYPE" "$PAYLOAD"
