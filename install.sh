@@ -350,8 +350,36 @@ main() {
   success "Server URL: $server_url"
   echo ""
 
+  # Check for existing API key in config
+  local config_dir_early="${XDG_CONFIG_HOME:-$HOME/.config}/devscope"
+  local config_file_early="${config_dir_early}/config"
+  local existing_api_key=""
+  if [[ -f "$config_file_early" ]]; then
+    existing_api_key="$(grep -v '^#' "$config_file_early" | grep '^DEVSCOPE_API_KEY=' | cut -d= -f2- | sed 's/^"//;s/"$//;s/^'"'"'//;s/'"'"'$//' | head -1)"
+  fi
+
   local api_key=""
-  if confirm_prompt "Configure an API key?" || false; then
+  if [[ -n "$existing_api_key" ]]; then
+    local masked_key="${existing_api_key:0:4}…${existing_api_key: -4}"
+    local api_key_selection
+    api_key_selection="$(choose "API key (existing: ${masked_key}):" \
+      "Keep existing key" \
+      "Enter a new key" \
+      "Remove API key")"
+    case "$api_key_selection" in
+      "Keep existing key")
+        api_key="$existing_api_key"
+        success "Using existing API key"
+        ;;
+      "Enter a new key")
+        api_key="$(input_prompt "Enter your API key:" "your-api-key")"
+        ;;
+      *)
+        api_key=""
+        warn "API key removed"
+        ;;
+    esac
+  elif confirm_prompt "Configure an API key?" || false; then
     api_key="$(input_prompt "Enter your API key:" "your-api-key")"
   fi
 
