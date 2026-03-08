@@ -93,6 +93,9 @@ _ds_sanitize_tool_input() {
     Grep|Glob)
       echo "$tool_input" | jq -c '{pattern: .pattern, path: .path} // {}' 2>/dev/null || echo '{}'
       ;;
+    Skill)
+      echo "$tool_input" | jq -c '{skill: .skill} // {}' 2>/dev/null || echo '{}'
+      ;;
     Bash)
       echo '{"redacted": true}'
       ;;
