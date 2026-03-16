@@ -25,6 +25,25 @@ fi
 # Redact remote URL in privacy mode — may leak org/repo info
 [ "$DEVSCOPE_PRIVACY" = "private" ] && GIT_REMOTE=""
 
+# --- Scan for CLAUDE.md files (max 3 levels deep, max 10 files) ---
+CLAUDE_MD_FILES="[]"
+if [ -n "$CWD" ] && command -v jq >/dev/null 2>&1; then
+  _claude_md_json="[]"
+  while IFS= read -r _cmd_file; do
+    [ -z "$_cmd_file" ] && continue
+    _cmd_hash=$(_ds_sha256 "$(cat "$_cmd_file")")
+    _cmd_size=$(wc -c < "$_cmd_file" | tr -d ' ')
+    _cmd_relpath="${_cmd_file#$CWD/}"
+    if [ "$DEVSCOPE_PRIVACY" = "private" ]; then
+      _claude_md_json=$(echo "$_claude_md_json" | jq --arg p "$_cmd_relpath" --arg h "$_cmd_hash" --argjson s "$_cmd_size" '. + [{"path":$p,"hash":$h,"size":$s}]')
+    else
+      _cmd_content=$(head -c 51200 "$_cmd_file")  # Cap at 50KB
+      _claude_md_json=$(echo "$_claude_md_json" | jq --arg p "$_cmd_relpath" --arg h "$_cmd_hash" --argjson s "$_cmd_size" --arg c "$_cmd_content" '. + [{"path":$p,"hash":$h,"size":$s,"content":$c}]')
+    fi
+  done < <(find "$CWD" -name "CLAUDE.md" -maxdepth 3 2>/dev/null | head -10)
+  CLAUDE_MD_FILES="$_claude_md_json"
+fi
+
 # --- Session continuity state file ---
 GC_CACHE_DIR="${HOME}/.cache/devscope"
 mkdir -p -m 0700 "$GC_CACHE_DIR"
@@ -66,10 +85,12 @@ PAYLOAD=$(jq -n \
   --arg branch "$GIT_BRANCH" \
   --arg commit "$GIT_COMMIT" \
   --arg remote "$GIT_REMOTE" \
+  --argjson claudeMd "$CLAUDE_MD_FILES" \
   '{startType: $st, permissionMode: $pm, continued: $cont, claudeSessionId: $ccid, privacyMode: $priv}
    | if $model != "" then . + {model: $model} else . end
    | if $branch != "" then . + {gitBranch: $branch} else . end
    | if $commit != "" then . + {gitCommit: $commit} else . end
-   | if $remote != "" then . + {gitRemoteUrl: $remote} else . end')
+   | if $remote != "" then . + {gitRemoteUrl: $remote} else . end
+   | if ($claudeMd | length) > 0 then . + {claudeMdFiles: $claudeMd} else . end')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "session.start" "$PAYLOAD"
