@@ -106,8 +106,12 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/notification.sh",
+            "type": "http",
+            "url": "${DEVSCOPE_URL}/api/events/hook?event=notification",
+            "headers": {
+              "x-api-key": "${DEVSCOPE_API_KEY}"
+            },
+            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
             "async": true
           }
         ]
@@ -128,8 +132,12 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/task-completed.sh",
+            "type": "http",
+            "url": "${DEVSCOPE_URL}/api/events/hook?event=task.completed",
+            "headers": {
+              "x-api-key": "${DEVSCOPE_API_KEY}"
+            },
+            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
             "async": true
           }
         ]
@@ -140,8 +148,12 @@
         "matcher": ".*",
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/permission-request.sh",
+            "type": "http",
+            "url": "${DEVSCOPE_URL}/api/events/hook?event=permission.request",
+            "headers": {
+              "x-api-key": "${DEVSCOPE_API_KEY}"
+            },
+            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
             "async": true
           }
         ]
@@ -151,8 +163,12 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh",
+            "type": "http",
+            "url": "${DEVSCOPE_URL}/api/events/hook?event=worktree.create",
+            "headers": {
+              "x-api-key": "${DEVSCOPE_API_KEY}"
+            },
+            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
             "async": true
           }
         ]
@@ -162,8 +178,12 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-remove.sh",
+            "type": "http",
+            "url": "${DEVSCOPE_URL}/api/events/hook?event=worktree.remove",
+            "headers": {
+              "x-api-key": "${DEVSCOPE_API_KEY}"
+            },
+            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
             "async": true
           }
         ]
@@ -173,8 +193,71 @@
       {
         "hooks": [
           {
+            "type": "http",
+            "url": "${DEVSCOPE_URL}/api/events/hook?event=config.change",
+            "headers": {
+              "x-api-key": "${DEVSCOPE_API_KEY}"
+            },
+            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/config-change.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/post-compact.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/elicitation.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/elicitation-result.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/instructions-loaded.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "${DEVSCOPE_URL}/api/events/hook?event=teammate.idle",
+            "headers": {
+              "x-api-key": "${DEVSCOPE_API_KEY}"
+            },
+            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
             "async": true
           }
         ]
