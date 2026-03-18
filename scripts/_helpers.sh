@@ -104,3 +104,37 @@ _ds_sanitize_tool_input() {
       ;;
   esac
 }
+
+# Extract a privacy-safe subcommand from raw tool input.
+# Always uses the RAW tool_input (not sanitized) because the first word
+# of a bash command and file extensions are not sensitive.
+_ds_extract_subcommand() {
+  local tool_name="$1"
+  local raw_tool_input="$2"
+
+  case "$tool_name" in
+    Bash)
+      # First word of command, strip path prefix, lowercase
+      echo "$raw_tool_input" | jq -r '.command // "" | split(" ") | .[0] | split("/") | .[-1]' 2>/dev/null | tr '[:upper:]' '[:lower:]'
+      ;;
+    Read|Write|Edit)
+      # File extension only (no path leaked)
+      echo "$raw_tool_input" | jq -r '.file_path // "" | split(".") | last // ""' 2>/dev/null
+      ;;
+    Grep)
+      echo "grep"
+      ;;
+    Glob)
+      echo "glob"
+      ;;
+    Skill)
+      echo "$raw_tool_input" | jq -r '.skill // ""' 2>/dev/null
+      ;;
+    Agent)
+      echo "$raw_tool_input" | jq -r '.subagent_type // ""' 2>/dev/null | tr '[:upper:]' '[:lower:]'
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
