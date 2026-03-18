@@ -67,6 +67,9 @@ if [ "$SUCCESS" = "true" ] && { [ "$TOOL_NAME" = "Write" ] || [ "$TOOL_NAME" = "
   fi
 fi
 
+# Extract privacy-safe subcommand from raw input (before sanitization)
+TOOL_SUBCOMMAND=$(_ds_extract_subcommand "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')")
+
 PAYLOAD=$(jq -n \
   --arg tn "$TOOL_NAME" \
   --argjson s "$SUCCESS" \
@@ -75,10 +78,12 @@ PAYLOAD=$(jq -n \
   --arg ai "$AGENT_ID" \
   --argjson ti "${TOOL_INPUT:-null}" \
   --argjson intr "$IS_INTERRUPT" \
+  --arg ts "$TOOL_SUBCOMMAND" \
   '{toolName: $tn, success: $s, duration: $d}
    | if $em != "" then . + {errorMessage: $em} else . end
    | if $ai != "" then . + {agentId: $ai} else . end
    | if $ti != null then . + {toolInput: $ti} else . end
-   | . + {isInterrupt: $intr}')
+   | . + {isInterrupt: $intr}
+   | if $ts != "" then . + {toolSubcommand: $ts} else . end')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "$EVENT_TYPE" "$PAYLOAD"

@@ -26,10 +26,14 @@ TIMING_DIR="${HOME}/.cache/devscope/timings"
 mkdir -p -m 0700 "$TIMING_DIR"
 echo "$(_ds_now_ns)" > "${TIMING_DIR}/${SESSION_ID_SAFE}_${TOOL_NAME_SAFE}"
 
+# Extract privacy-safe subcommand from raw input (before sanitization)
+TOOL_SUBCOMMAND=$(_ds_extract_subcommand "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')")
+
 PAYLOAD=$(jq -n \
   --arg tn "$TOOL_NAME" \
   --arg ai "$AGENT_ID" \
   --argjson ti "${TOOL_INPUT:-null}" \
-  '{toolName: $tn} | if $ai != "" then . + {agentId: $ai} else . end | if $ti != null then . + {toolInput: $ti} else . end')
+  --arg ts "$TOOL_SUBCOMMAND" \
+  '{toolName: $tn} | if $ai != "" then . + {agentId: $ai} else . end | if $ti != null then . + {toolInput: $ti} else . end | if $ts != "" then . + {toolSubcommand: $ts} else . end')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "tool.start" "$PAYLOAD"
