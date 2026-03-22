@@ -106,12 +106,8 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "${DEVSCOPE_URL}/api/events/hook?event=notification",
-            "headers": {
-              "x-api-key": "${DEVSCOPE_API_KEY}"
-            },
-            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/notification.sh",
             "async": true
           }
         ]
@@ -128,16 +124,23 @@
         ]
       }
     ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/post-compact.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
     "TaskCompleted": [
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "${DEVSCOPE_URL}/api/events/hook?event=task.completed",
-            "headers": {
-              "x-api-key": "${DEVSCOPE_API_KEY}"
-            },
-            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/task-completed.sh",
             "async": true
           }
         ]
@@ -148,12 +151,8 @@
         "matcher": ".*",
         "hooks": [
           {
-            "type": "http",
-            "url": "${DEVSCOPE_URL}/api/events/hook?event=permission.request",
-            "headers": {
-              "x-api-key": "${DEVSCOPE_API_KEY}"
-            },
-            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/permission-request.sh",
             "async": true
           }
         ]
@@ -163,12 +162,8 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "${DEVSCOPE_URL}/api/events/hook?event=worktree.create",
-            "headers": {
-              "x-api-key": "${DEVSCOPE_API_KEY}"
-            },
-            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh",
             "async": true
           }
         ]
@@ -178,12 +173,8 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "${DEVSCOPE_URL}/api/events/hook?event=worktree.remove",
-            "headers": {
-              "x-api-key": "${DEVSCOPE_API_KEY}"
-            },
-            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-remove.sh",
             "async": true
           }
         ]
@@ -193,23 +184,8 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "${DEVSCOPE_URL}/api/events/hook?event=config.change",
-            "headers": {
-              "x-api-key": "${DEVSCOPE_API_KEY}"
-            },
-            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
-            "async": true
-          }
-        ]
-      }
-    ],
-    "PostCompact": [
-      {
-        "hooks": [
-          {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/post-compact.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/config-change.sh",
             "async": true
           }
         ]
@@ -252,12 +228,8 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "${DEVSCOPE_URL}/api/events/hook?event=teammate.idle",
-            "headers": {
-              "x-api-key": "${DEVSCOPE_API_KEY}"
-            },
-            "allowedEnvVars": ["DEVSCOPE_URL", "DEVSCOPE_API_KEY"],
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/teammate-idle.sh",
             "async": true
           }
         ]
