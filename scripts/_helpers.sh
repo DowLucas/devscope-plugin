@@ -72,6 +72,34 @@ _ds_tac() {
   fi
 }
 
+# --- API query helpers for plugin commands ---
+# These are used by command scripts (e.g. /devscope:ask, /devscope:status)
+
+# GET request to DevScope API. Returns JSON body.
+# Usage: _ds_api_get "/api/insights?limit=5"
+_ds_api_get() {
+  local path="$1"
+  local curl_args=(-s -X GET "${DEVSCOPE_URL}${path}" -H "Content-Type: application/json" --max-time 15)
+  local curl_config=""
+  if [ -n "${DEVSCOPE_API_KEY:-}" ]; then
+    curl_config="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
+  fi
+  echo "$curl_config" | curl --config - "${curl_args[@]}" 2>/dev/null
+}
+
+# POST request to DevScope API. Returns JSON body.
+# Usage: _ds_api_post "/api/ai/chat" '{"question":"hello"}'
+_ds_api_post() {
+  local path="$1"
+  local body="$2"
+  local curl_args=(-s -X POST "${DEVSCOPE_URL}${path}" -H "Content-Type: application/json" -d "$body" --max-time 30)
+  local curl_config=""
+  if [ -n "${DEVSCOPE_API_KEY:-}" ]; then
+    curl_config="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
+  fi
+  echo "$curl_config" | curl --config - "${curl_args[@]}" 2>/dev/null
+}
+
 # Privacy mode: "private", "standard" (default), or "open"
 DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-standard}"
 
