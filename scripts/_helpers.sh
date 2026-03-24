@@ -152,6 +152,31 @@ _ds_sanitize_tool_input() {
   esac
 }
 
+# Sanitize tool result for standard privacy mode.
+# Mirrors _ds_sanitize_tool_input: keeps safe metadata, redacts content.
+_ds_sanitize_tool_result() {
+  local tool_name="$1"
+  local tool_result="$2"
+
+  case "$tool_name" in
+    Read|Grep|Glob)
+      # File contents / search results — redact in standard mode
+      echo '{"redacted": true}'
+      ;;
+    Bash)
+      # Command output — redact in standard mode
+      echo '{"redacted": true}'
+      ;;
+    Write|Edit)
+      # Write/Edit results are typically short confirmations — safe to keep
+      echo "$tool_result" | jq -R -s '(fromjson? // .) | tostring | .[:500]' 2>/dev/null || echo '{"redacted": true}'
+      ;;
+    *)
+      echo '{"redacted": true}'
+      ;;
+  esac
+}
+
 # Extract a privacy-safe subcommand from raw tool input.
 # Always uses the RAW tool_input (not sanitized) because the first word
 # of a bash command and file extensions are not sensitive.
