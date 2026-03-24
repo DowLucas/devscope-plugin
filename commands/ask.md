@@ -45,7 +45,7 @@ If the health check succeeds, send the streaming AI query:
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/scripts/_helpers.sh"
 
-CURL_ARGS=(-s -N -X POST "${DEVSCOPE_URL}/api/ai/chat" -H "Content-Type: application/json" -d "$(jq -n --arg q "$QUESTION" '{question: $q}')" --max-time 60)
+CURL_ARGS=(-s -N -X POST "${DEVSCOPE_URL}/api/ai/chat" -H "Content-Type: application/json" -H "x-requested-with: devscope-cli" -d "$(jq -n --arg q "$QUESTION" '{question: $q}')" --max-time 60)
 CURL_CONFIG=""
 if [ -n "${DEVSCOPE_API_KEY:-}" ]; then
   CURL_CONFIG="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""

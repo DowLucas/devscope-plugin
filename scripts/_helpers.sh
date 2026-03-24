@@ -96,7 +96,7 @@ _ds_api_get() {
 _ds_api_post() {
   local path="$1"
   local body="$2"
-  local curl_args=(-s -X POST "${DEVSCOPE_URL}${path}" -H "Content-Type: application/json" -d "$body" --max-time 30 -w '\n%{http_code}')
+  local curl_args=(-s -X POST "${DEVSCOPE_URL}${path}" -H "Content-Type: application/json" -H "x-requested-with: devscope-cli" -d "$body" --max-time 30 -w '\n%{http_code}')
   local curl_config=""
   if [ -n "${DEVSCOPE_API_KEY:-}" ]; then
     curl_config="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
