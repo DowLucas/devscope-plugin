@@ -26,19 +26,17 @@ BODY=$(jq -n --arg rt "$REPORT_TYPE" --arg p "$PERSONA" 'if $p == "" then {repor
 RAW=$(_ds_api_post "/api/ai/reports/generate" "$BODY")
 HTTP_STATUS=$(echo "$RAW" | tail -1)
 RESPONSE=$(echo "$RAW" | sed '$d')
-echo "HTTP_STATUS=$HTTP_STATUS"
 echo "$RESPONSE"
 ```
 
 ### Step 3: Present the report
 
-The response contains a generated report with:
-- `title`: Report title
-- `markdown_content`: Full report in Markdown format
-- `report_type`: daily/weekly
-- `period_start` / `period_end`: Time range covered
-- `status`: "completed" or "failed"
-
-Display the `markdown_content` to the user. If the status is "failed", tell the user the report generation encountered an error and they should try again.
-
-If the API returns 503, AI features aren't available on the server. If 429, the rate limit or token budget has been exceeded.
+Parse the response and branch on the HTTP status code:
+- **200**: Parse the JSON response. Display the `markdown_content` field to the user. If the `status` field is `"failed"`, tell the user report generation encountered an error and they should try again. The response schema includes:
+  - `title`: Report title
+  - `markdown_content`: Full report in Markdown format
+  - `report_type`: daily/weekly
+  - `period_start` / `period_end`: Time range covered
+  - `status`: "completed" or "failed"
+- **503**: AI features aren't available on the server
+- **429**: Rate limit or token budget has been exceeded

@@ -37,7 +37,6 @@ source "${CLAUDE_PLUGIN_ROOT}/scripts/_helpers.sh"
 RAW=$(_ds_api_post "/api/ai/session-feedback" "$(jq -n --arg sid "$SESSION_ID" '{session_id: $sid}')")
 HTTP_STATUS=$(echo "$RAW" | tail -1)
 RESPONSE=$(echo "$RAW" | sed '$d')
-echo "HTTP_STATUS=$HTTP_STATUS"
 echo "$RESPONSE"
 ```
 
