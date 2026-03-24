@@ -20,9 +20,10 @@ STATE_FILE="${HOME}/.cache/devscope/${PROJECT_HASH}.session"
 
 if [ -f "$STATE_FILE" ]; then
   SESSION_ID=$(cat "$STATE_FILE")
-  echo "Session ID: $SESSION_ID"
+  echo "Session found"
 else
   echo "NO_SESSION"
+  exit 1
 fi
 ```
 
@@ -33,16 +34,20 @@ If no session is found, tell the user that DevScope hasn't tracked a session yet
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/scripts/_helpers.sh"
 
-RESPONSE=$(_ds_api_post "/api/ai/session-feedback" "$(jq -n --arg sid "$SESSION_ID" '{session_id: $sid}')")
+RAW=$(_ds_api_post "/api/ai/session-feedback" "$(jq -n --arg sid "$SESSION_ID" '{session_id: $sid}')")
+HTTP_STATUS=$(echo "$RAW" | tail -1)
+RESPONSE=$(echo "$RAW" | sed '$d')
+echo "HTTP_STATUS=$HTTP_STATUS"
 echo "$RESPONSE"
 ```
 
 ### Step 3: Present the feedback
 
-Parse the response and present the AI feedback in a structured format:
-- Show the report markdown content (from the `markdown_content` or `content` field)
-- If the API returns a 404, the session hasn't been synced to the server yet
-- If the API returns a 403, the session is in private mode
-- If the API returns a 503, AI features aren't available on the server
+Parse the response and branch on the HTTP status code:
+- **200**: Show the report markdown content (from the `markdown_content` or `content` field)
+- **404**: The session hasn't been synced to the server yet
+- **403**: The session is in private mode
+- **503**: AI features aren't available on the server
+- **429**: Rate limit or token budget exceeded
 
 Tell the user this is based on the events tracked so far in their session, and they can run this command again later for updated feedback.

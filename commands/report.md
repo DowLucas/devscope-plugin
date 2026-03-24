@@ -22,7 +22,7 @@ source "${CLAUDE_PLUGIN_ROOT}/scripts/_helpers.sh"
 
 # report_type: "daily" or "weekly"
 # persona: "manager", "cto", or omit for developer-level detail
-BODY=$(jq -n --arg rt "$REPORT_TYPE" --arg p "$PERSONA" '{report_type: $rt, persona: $p}')
+BODY=$(jq -n --arg rt "$REPORT_TYPE" --arg p "$PERSONA" 'if $p == "" then {report_type: $rt} else {report_type: $rt, persona: $p} end')
 RESPONSE=$(_ds_api_post "/api/ai/reports/generate" "$BODY")
 echo "$RESPONSE"
 ```

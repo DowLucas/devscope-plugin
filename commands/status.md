@@ -14,7 +14,7 @@ source "${CLAUDE_PLUGIN_ROOT}/scripts/_helpers.sh"
 
 echo "=== CONFIG ==="
 echo "URL: $DEVSCOPE_URL"
-echo "API Key: ${DEVSCOPE_API_KEY:+configured}${DEVSCOPE_API_KEY:-not set}"
+if [ -n "${DEVSCOPE_API_KEY:-}" ]; then echo "API Key: configured"; else echo "API Key: not set"; fi
 echo "Privacy: $DEVSCOPE_PRIVACY"
 
 echo "=== HEALTH ==="

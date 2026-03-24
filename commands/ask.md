@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(curl:*), Bash(source:*), Bash(cat:*), AskUserQuestion
+allowed-tools: Bash(curl:*), Bash(source:*), Bash(cat:*), Bash(jq:*), Bash(grep:*), Bash(sed:*), Bash(echo:*), AskUserQuestion
 description: Ask an AI-powered question about your development data
 ---
 
