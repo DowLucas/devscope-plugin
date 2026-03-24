@@ -21,6 +21,28 @@ else
   TOOL_INPUT=$(_ds_sanitize_tool_input "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')")
 fi
 
+# Privacy-aware tool result (same gating as tool_input)
+if [ "$DEVSCOPE_PRIVACY" = "open" ]; then
+  # Open mode: full result, truncated to 5KB
+  _TR_RAW=$(echo "$INPUT" | jq -c 'if .tool_result == null then null else (.tool_result | tostring | .[:5000]) end' 2>/dev/null || echo "null")
+  if [ "$_TR_RAW" = "null" ]; then
+    TOOL_RESULT="null"
+  else
+    TOOL_RESULT=$(jq -n --arg r "$_TR_RAW" '$r')
+  fi
+elif [ "$DEVSCOPE_PRIVACY" = "standard" ]; then
+  # Standard mode: sanitize result same as tool_input
+  _TR_RAW=$(echo "$INPUT" | jq -c '.tool_result // null' 2>/dev/null || echo "null")
+  if [ "$_TR_RAW" = "null" ]; then
+    TOOL_RESULT="null"
+  else
+    TOOL_RESULT=$(_ds_sanitize_tool_result "$TOOL_NAME" "$_TR_RAW")
+  fi
+else
+  # Private mode: no tool result
+  TOOL_RESULT="null"
+fi
+
 # Sanitize for safe temp file paths
 SESSION_ID_SAFE=$(echo "$SESSION_ID" | tr -cd 'a-zA-Z0-9_-')
 TOOL_NAME_SAFE=$(echo "$TOOL_NAME" | tr -cd 'a-zA-Z0-9_-')
@@ -77,12 +99,14 @@ PAYLOAD=$(jq -n \
   --arg em "$ERROR_MSG" \
   --arg ai "$AGENT_ID" \
   --argjson ti "${TOOL_INPUT:-null}" \
+  --argjson tr "${TOOL_RESULT:-null}" \
   --argjson intr "$IS_INTERRUPT" \
   --arg ts "$TOOL_SUBCOMMAND" \
   '{toolName: $tn, success: $s, duration: $d}
    | if $em != "" then . + {errorMessage: $em} else . end
    | if $ai != "" then . + {agentId: $ai} else . end
    | if $ti != null then . + {toolInput: $ti} else . end
+   | if $tr != null then . + {toolResult: $tr} else . end
    | . + {isInterrupt: $intr}
    | if $ts != "" then . + {toolSubcommand: $ts} else . end')
 
