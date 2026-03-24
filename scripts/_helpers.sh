@@ -104,6 +104,21 @@ _ds_api_post() {
   echo "$curl_config" | curl --config - "${curl_args[@]}" 2>/dev/null
 }
 
+# Quick health check. Returns 0 if server is reachable, 1 otherwise.
+# Prints the health JSON on success, "UNREACHABLE" on failure.
+_ds_health_check() {
+  local result
+  result=$(curl -sf --max-time 5 "${DEVSCOPE_URL}/api/health" 2>&1)
+  local exit_code=$?
+  if [ $exit_code -eq 0 ] && [ -n "$result" ]; then
+    echo "$result"
+    return 0
+  else
+    echo "UNREACHABLE"
+    return 1
+  fi
+}
+
 # Privacy mode: "private", "standard" (default), or "open"
 DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-standard}"
 
