@@ -9,7 +9,9 @@ Help the user ask a natural language question about their team's development dat
 
 ### Step 1: Get the question
 
-Ask the user what they'd like to know using AskUserQuestion. Suggest example questions:
+If the user passed arguments (check the `ARGUMENTS` section at the bottom of this prompt), use those as the question directly — do NOT ask again.
+
+Otherwise, ask the user what they'd like to know using AskUserQuestion. Suggest example questions:
 - "Which tools have the highest failure rate this week?"
 - "What were the most active projects in the last 7 days?"
 - "Show me session trends over the past month"
@@ -65,7 +67,14 @@ else
     echo "API_ERROR: $ERROR_MSG"
     echo "RAW: $(echo "$SSE_OUTPUT" | head -5)"
   else
-    ANSWER=$(echo "$SSE_OUTPUT" | grep '^data: ' | grep -v '\[DONE\]' | sed 's/^data: //' | jq -rs '[.[] | select(.type == "text") | .content] | join("")')
+    # Parse SSE line-by-line to avoid jq -rs failures on multiline content
+    ANSWER=""
+    while IFS= read -r line; do
+      chunk=$(echo "$line" | jq -r 'select(.type == "text") | .content // empty' 2>/dev/null)
+      if [ -n "$chunk" ]; then
+        ANSWER="${ANSWER}${chunk}"
+      fi
+    done < <(echo "$SSE_OUTPUT" | grep '^data: ' | grep -v '\[DONE\]' | sed 's/^data: //')
     echo "$ANSWER"
   fi
 fi
