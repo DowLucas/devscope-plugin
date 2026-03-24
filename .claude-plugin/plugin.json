@@ -1,6 +1,6 @@
 {
   "name": "devscope",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Real-time developer activity monitoring for Claude Code sessions",
   "author": {
     "name": "Lucas Dow",
