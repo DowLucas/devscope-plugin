@@ -23,7 +23,10 @@ source "${CLAUDE_PLUGIN_ROOT}/scripts/_helpers.sh"
 # report_type: "daily" or "weekly"
 # persona: "manager", "cto", or omit for developer-level detail
 BODY=$(jq -n --arg rt "$REPORT_TYPE" --arg p "$PERSONA" 'if $p == "" then {report_type: $rt} else {report_type: $rt, persona: $p} end')
-RESPONSE=$(_ds_api_post "/api/ai/reports/generate" "$BODY")
+RAW=$(_ds_api_post "/api/ai/reports/generate" "$BODY")
+HTTP_STATUS=$(echo "$RAW" | tail -1)
+RESPONSE=$(echo "$RAW" | sed '$d')
+echo "HTTP_STATUS=$HTTP_STATUS"
 echo "$RESPONSE"
 ```
 
@@ -31,7 +34,7 @@ echo "$RESPONSE"
 
 The response contains a generated report with:
 - `title`: Report title
-- `markdown_content`: Full report in markdown format
+- `markdown_content`: Full report in Markdown format
 - `report_type`: daily/weekly
 - `period_start` / `period_end`: Time range covered
 - `status`: "completed" or "failed"
