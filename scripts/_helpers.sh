@@ -74,25 +74,54 @@ _ds_tac() {
 
 # Extract cumulative token usage from the last assistant message in transcript JSONL.
 # Returns JSON: {inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens}
-# Reads from end of file for O(1) performance on large transcripts.
+# Uses python3/jq to properly parse multi-line JSON entries from the transcript.
 _ds_extract_token_usage() {
   local transcript_path="$1"
   if [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ]; then
     echo '{}'
     return
   fi
-  local usage_line
-  usage_line=$(_ds_tac "$transcript_path" | grep -m1 '"usage"' 2>/dev/null || echo "")
-  if [ -z "$usage_line" ]; then
-    echo '{}'
-    return
+  # Transcript entries may span multiple lines (code blocks contain literal newlines),
+  # so grep-based extraction breaks. Use python3 for correct JSON parsing; fall back
+  # to jq streaming for environments without python3.
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    lines = f.readlines()
+for line in reversed(lines):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        obj = json.loads(line)
+    except Exception:
+        continue
+    u = (obj.get('message') or {}).get('usage')
+    if u:
+        json.dump({
+            'inputTokens': u.get('input_tokens', 0),
+            'outputTokens': u.get('output_tokens', 0),
+            'cacheCreationTokens': u.get('cache_creation_input_tokens', 0),
+            'cacheReadTokens': u.get('cache_read_input_tokens', 0)
+        }, sys.stdout)
+        sys.exit(0)
+print('{}')
+" "$transcript_path" 2>/dev/null || echo '{}'
+  else
+    # Fallback: jq slurp with raw-input to handle multi-line entries
+    jq -R -s -c '
+      [split("\n") | .[] | select(length > 0) |
+       try fromjson catch empty |
+       select(.message.usage)] | last //  {} |
+      if .message.usage then {
+        inputTokens: (.message.usage.input_tokens // 0),
+        outputTokens: (.message.usage.output_tokens // 0),
+        cacheCreationTokens: (.message.usage.cache_creation_input_tokens // 0),
+        cacheReadTokens: (.message.usage.cache_read_input_tokens // 0)
+      } else {} end
+    ' "$transcript_path" 2>/dev/null || echo '{}'
   fi
-  echo "$usage_line" | jq -c '{
-    inputTokens: (.message.usage.input_tokens // 0),
-    outputTokens: (.message.usage.output_tokens // 0),
-    cacheCreationTokens: (.message.usage.cache_creation_input_tokens // 0),
-    cacheReadTokens: (.message.usage.cache_read_input_tokens // 0)
-  }' 2>/dev/null || echo '{}'
 }
 
 # --- API query helpers for plugin commands ---
