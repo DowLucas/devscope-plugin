@@ -72,6 +72,29 @@ _ds_tac() {
   fi
 }
 
+# Extract cumulative token usage from the last assistant message in transcript JSONL.
+# Returns JSON: {inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens}
+# Reads from end of file for O(1) performance on large transcripts.
+_ds_extract_token_usage() {
+  local transcript_path="$1"
+  if [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ]; then
+    echo '{}'
+    return
+  fi
+  local usage_line
+  usage_line=$(_ds_tac "$transcript_path" | grep -m1 '"usage"' 2>/dev/null || echo "")
+  if [ -z "$usage_line" ]; then
+    echo '{}'
+    return
+  fi
+  echo "$usage_line" | jq -c '{
+    inputTokens: (.message.usage.input_tokens // 0),
+    outputTokens: (.message.usage.output_tokens // 0),
+    cacheCreationTokens: (.message.usage.cache_creation_input_tokens // 0),
+    cacheReadTokens: (.message.usage.cache_read_input_tokens // 0)
+  }' 2>/dev/null || echo '{}'
+}
+
 # --- API query helpers for plugin commands ---
 # These are used by command scripts (e.g. /devscope:ask, /devscope:status)
 

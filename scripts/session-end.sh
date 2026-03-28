@@ -16,6 +16,10 @@ if [ -n "$CWD" ]; then
   GIT_COMMIT=$(git -C "$CWD" rev-parse HEAD 2>/dev/null || echo "")
 fi
 
+# Extract token usage from transcript JSONL
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null)
+TOKEN_USAGE=$(_ds_extract_token_usage "$TRANSCRIPT_PATH")
+
 # Read accumulated file changes
 FILES_CHANGED="[]"
 _GC_HASH=""
@@ -38,10 +42,12 @@ PAYLOAD=$(jq -n \
   --argjson fc "$FILES_CHANGED" \
   --arg branch "$GIT_BRANCH" \
   --arg commit "$GIT_COMMIT" \
+  --argjson tu "$TOKEN_USAGE" \
   '{endReason: $er}
    | if ($fc | length) > 0 then . + {filesChanged: $fc} else . end
    | if $branch != "" then . + {gitBranch: $branch} else . end
-   | if $commit != "" then . + {gitCommit: $commit} else . end')
+   | if $commit != "" then . + {gitCommit: $commit} else . end
+   | if ($tu | length) > 0 then . + {tokenUsage: $tu} else . end')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "session.end" "$PAYLOAD"
 
