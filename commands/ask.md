@@ -67,15 +67,17 @@ else
     echo "API_ERROR: $ERROR_MSG"
     echo "RAW: $(echo "$SSE_OUTPUT" | head -5)"
   else
-    # Parse SSE line-by-line to avoid jq -rs failures on multiline content
-    ANSWER=""
-    while IFS= read -r line; do
-      chunk=$(echo "$line" | jq -r 'select(.type == "text") | .content // empty' 2>/dev/null)
-      if [ -n "$chunk" ]; then
-        ANSWER="${ANSWER}${chunk}"
-      fi
-    done < <(echo "$SSE_OUTPUT" | grep '^data: ' | grep -v '\[DONE\]' | sed 's/^data: //')
-    echo "$ANSWER"
+    # Check for an SSE-level error event before parsing text chunks
+    SSE_ERROR=$(printf '%s\n' "$SSE_OUTPUT" | grep '^data: ' | grep -v '\[DONE\]' | sed 's/^data: //' | jq -sr 'map(select(.type=="error") | .content) | first // empty' 2>/dev/null)
+    if [ -n "$SSE_ERROR" ]; then
+      echo "API_ERROR: $SSE_ERROR"
+    else
+      # Slurp all text chunks in one jq pass so embedded newlines at chunk boundaries survive.
+      # The old per-line $(jq ...) approach dropped trailing \n from each 50-char chunk,
+      # eating markdown list breaks.
+      ANSWER=$(printf '%s\n' "$SSE_OUTPUT" | grep '^data: ' | grep -v '\[DONE\]' | sed 's/^data: //' | jq -sr 'map(select(.type=="text") | .content) | join("")' 2>/dev/null)
+      printf '%s\n' "$ANSWER"
+    fi
   fi
 fi
 ```
