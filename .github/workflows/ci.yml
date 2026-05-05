@@ -58,6 +58,11 @@ jobs:
             echo "BETTER_AUTH_SECRET=$(openssl rand -hex 24)"
             echo "DEVSCOPE_ADMIN_PASSWORD=$(openssl rand -hex 16)"
             echo "DEVSCOPE_ADMIN_EMAIL=smoke@devscope.test"
+            # Match better-auth trustedOrigins / BETTER_AUTH_URL to the
+            # actual base URL we hit so sign-in/api-key calls aren't
+            # rejected with 403.
+            echo "GC_CORS_ORIGIN=http://localhost:6767"
+            echo "BETTER_AUTH_URL=http://localhost:6767"
           } >> "$GITHUB_ENV"
 
       - name: Build and start postgres + backend
@@ -84,10 +89,12 @@ jobs:
           # route requires either a session cookie or x-api-key header.
           curl -fsS -c /tmp/cj.txt -X POST "$DEVSCOPE_URL/api/auth/sign-in/email" \
             -H 'Content-Type: application/json' \
+            -H "Origin: $DEVSCOPE_URL" \
             -d "$(jq -n --arg e "$DEVSCOPE_ADMIN_EMAIL" --arg p "$DEVSCOPE_ADMIN_PASSWORD" '{email:$e, password:$p}')" \
             -o /tmp/signin.json
           KEY=$(curl -fsS -b /tmp/cj.txt -X POST "$DEVSCOPE_URL/api/auth/api-key/create" \
             -H 'Content-Type: application/json' \
+            -H "Origin: $DEVSCOPE_URL" \
             -d '{"name":"smoke"}' | jq -r '.key')
           if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
             echo "Failed to mint API key" >&2
