@@ -85,6 +85,11 @@ for fixture in "${fixtures[@]}"; do
     exit 1
   fi
   count=$((count + 1))
+  # Better-auth's apiKey plugin rate-limits at 15 verifyApiKey calls per
+  # 1s window per key. With 7 fixtures + a probe + the upstream sanity
+  # ping, a tight burst tips over and the backend returns 401 with
+  # "Rate limit exceeded". 100ms between fixtures keeps us under.
+  sleep 0.1
 done
 
 # 4. Inspect stderr for delivery failures.
@@ -119,6 +124,8 @@ probe_event=$(jq -n \
     payload: {source: "smoke"}
   }')
 
+# Pause to clear better-auth apiKey rate window (15/s) before the probe.
+sleep 1
 probe_args=(-s -o /dev/null -w '%{http_code}' --max-time 5
   -X POST "$DEVSCOPE_URL/api/events"
   -H 'Content-Type: application/json'
