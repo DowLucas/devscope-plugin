@@ -92,12 +92,29 @@ jobs:
             -H "Origin: $DEVSCOPE_URL" \
             -d "$(jq -n --arg e "$DEVSCOPE_ADMIN_EMAIL" --arg p "$DEVSCOPE_ADMIN_PASSWORD" '{email:$e, password:$p}')" \
             -o /tmp/signin.json
-          KEY=$(curl -fsS -b /tmp/cj.txt -X POST "$DEVSCOPE_URL/api/auth/api-key/create" \
+          curl -fsS -b /tmp/cj.txt -X POST "$DEVSCOPE_URL/api/auth/api-key/create" \
             -H 'Content-Type: application/json' \
             -H "Origin: $DEVSCOPE_URL" \
-            -d '{"name":"smoke"}' | jq -r '.key')
+            -d '{"name":"smoke"}' \
+            -o /tmp/keyresp.json
+          # Surface the create response shape so we can debug auth on CI.
+          # The actual key string is masked via ::add-mask:: below.
+          jq 'del(.key)' /tmp/keyresp.json || cat /tmp/keyresp.json
+          KEY=$(jq -r '.key' /tmp/keyresp.json)
           if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
             echo "Failed to mint API key" >&2
+            cat /tmp/keyresp.json >&2
+            exit 1
+          fi
+          echo "::add-mask::$KEY"
+          # Sanity check: hit /api/verify-connection (uses x-api-key) so a
+          # broken key fails THIS step rather than the smoke replay step.
+          VC=$(curl -s -o /tmp/vc.json -w '%{http_code}' --max-time 5 \
+            -X POST "$DEVSCOPE_URL/api/verify-connection" \
+            -H "x-api-key: $KEY")
+          echo "verify-connection HTTP=$VC body=$(cat /tmp/vc.json)"
+          if [ "$VC" != "200" ]; then
+            echo "API key minted but /api/verify-connection rejected it" >&2
             exit 1
           fi
           echo "DEVSCOPE_API_KEY=$KEY" >> "$GITHUB_ENV"
