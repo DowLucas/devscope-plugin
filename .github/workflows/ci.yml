@@ -111,7 +111,8 @@ jobs:
           # broken key fails THIS step rather than the smoke replay step.
           VC=$(curl -s -o /tmp/vc.json -w '%{http_code}' --max-time 5 \
             -X POST "$DEVSCOPE_URL/api/verify-connection" \
-            -H "x-api-key: $KEY")
+            -H "x-api-key: $KEY" \
+            -H "x-requested-with: smoke-ci")
           echo "verify-connection HTTP=$VC body=$(cat /tmp/vc.json)"
           if [ "$VC" != "200" ]; then
             echo "API key minted but /api/verify-connection rejected it" >&2
