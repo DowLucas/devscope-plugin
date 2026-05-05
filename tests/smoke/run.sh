@@ -68,9 +68,6 @@ if [ "${#fixtures[@]}" -eq 0 ]; then
   exit 1
 fi
 
-before_count=$(curl -fsS --max-time 5 "$DEVSCOPE_URL/api/events/recent?limit=500" | jq 'length')
-log "Backend recent-events count before replay: $before_count"
-
 count=0
 for fixture in "${fixtures[@]}"; do
   name=$(basename "$fixture" .json)
@@ -103,14 +100,35 @@ if [ -s "$STDERR_LOG" ]; then
   sed 's/^/  /' "$STDERR_LOG" >&2 || true
 fi
 
-# 5. Positive check on the backend.
-sleep 1  # async hooks may still be flushing
-after_count=$(curl -fsS --max-time 5 "$DEVSCOPE_URL/api/events/recent?limit=500" | jq 'length')
-log "Backend recent-events count after replay: $after_count (expected >= $((before_count + count)))"
+# 5. Positive direct probe — POST one synthetic event straight to /api/events
+# and assert a 2xx response. This is the authoritative smoke signal: the
+# /api/events/recent feed is auth-gated, but POST /api/events is open (and is
+# the exact endpoint every hook script targets via send-event.sh).
+probe_event=$(jq -n \
+  --arg id "smoke-probe-$(date +%s%N)" \
+  --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" \
+  '{
+    id: $id,
+    timestamp: $ts,
+    sessionId: "smoke-session-probe",
+    developerId: "smoke-dev",
+    developerName: "Smoke Probe",
+    projectPath: "/tmp/smoke",
+    projectName: "smoke",
+    eventType: "session.start",
+    payload: {source: "smoke"}
+  }')
 
-if [ "$after_count" -lt "$((before_count + count))" ]; then
-  log "ERROR: backend stored fewer events than fixtures replayed"
+probe_status=$(curl -s -o /dev/null -w '%{http_code}' \
+  --max-time 5 \
+  -X POST "$DEVSCOPE_URL/api/events" \
+  -H 'Content-Type: application/json' \
+  -d "$probe_event")
+
+if [ "$probe_status" != "200" ]; then
+  log "ERROR: direct POST /api/events probe returned HTTP $probe_status (expected 200)"
   exit 1
 fi
+log "Direct POST probe to /api/events returned 200"
 
-log "Smoke OK: $count fixtures replayed, all accepted with 2xx"
+log "Smoke OK: $count hook fixtures replayed and 1 direct probe — all accepted with 2xx"

@@ -48,13 +48,20 @@ jobs:
           ref: main
           path: devscope
 
+      - name: Generate ephemeral test secrets
+        # Random per-run values keep the workflow free of hard-coded
+        # secret-shaped strings (which trip GitGuardian and similar scanners).
+        # These are throwaway; the container is destroyed at the end of the run.
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "BETTER_AUTH_SECRET=$(openssl rand -hex 24)"
+            echo "DEVSCOPE_ADMIN_PASSWORD=$(openssl rand -hex 16)"
+            echo "DEVSCOPE_ADMIN_EMAIL=smoke@devscope.test"
+          } >> "$GITHUB_ENV"
+
       - name: Build and start postgres + backend
         working-directory: devscope
-        env:
-          POSTGRES_PASSWORD: smoke-postgres-pw
-          BETTER_AUTH_SECRET: smoke-better-auth-secret-32-bytes-min
-          DEVSCOPE_ADMIN_PASSWORD: smoke-admin-pw
-          DEVSCOPE_ADMIN_EMAIL: smoke@devscope.test
         run: |
           docker compose up -d --build postgres backend
           docker compose ps
