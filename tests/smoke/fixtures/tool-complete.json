@@ -1,0 +1,11 @@
+{
+  "session_id": "smoke-session-0001",
+  "cwd": "__SMOKE_CWD__",
+  "tool_name": "Bash",
+  "hook_event_name": "PostToolUse",
+  "tool_input": {
+    "command": "echo hello"
+  },
+  "tool_result": "hello\n",
+  "is_interrupt": false
+}

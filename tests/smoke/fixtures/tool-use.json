@@ -1,0 +1,9 @@
+{
+  "session_id": "smoke-session-0001",
+  "cwd": "__SMOKE_CWD__",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "echo hello",
+    "description": "Smoke fixture"
+  }
+}

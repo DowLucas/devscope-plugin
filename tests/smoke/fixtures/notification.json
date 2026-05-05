@@ -1,0 +1,7 @@
+{
+  "session_id": "smoke-session-0001",
+  "cwd": "__SMOKE_CWD__",
+  "notification_type": "info",
+  "title": "Smoke",
+  "message": "Smoke notification fixture."
+}

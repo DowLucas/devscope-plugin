@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck --version
+      - name: Lint hook scripts and installer
+        run: |
+          shellcheck --severity=warning -x \
+            scripts/*.sh \
+            install.sh \
+            tests/check-hooks-consistency.sh \
+            tests/smoke/run.sh
+
+  hooks-consistency:
+    name: hooks.json consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify every hook script is wired or excluded
+        run: bash tests/check-hooks-consistency.sh
+
+  smoke:
+    name: smoke POST against fresh backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Checkout devscope backend
+        uses: actions/checkout@v4
+        with:
+          repository: DowLucas/devscope
+          ref: main
+          path: devscope
+
+      - name: Build and start postgres + backend
+        working-directory: devscope
+        env:
+          POSTGRES_PASSWORD: smoke-postgres-pw
+          BETTER_AUTH_SECRET: smoke-better-auth-secret-32-bytes-min
+          DEVSCOPE_ADMIN_PASSWORD: smoke-admin-pw
+          DEVSCOPE_ADMIN_EMAIL: smoke@devscope.test
+        run: |
+          docker compose up -d --build postgres backend
+          docker compose ps
+
+      - name: Replay hook fixtures and assert 2xx
+        working-directory: plugin
+        env:
+          DEVSCOPE_URL: http://localhost:6767
+        run: bash tests/smoke/run.sh
+
+      - name: Backend logs (on failure)
+        if: failure()
+        working-directory: devscope
+        run: |
+          echo "::group::backend logs"
+          docker compose logs backend || true
+          echo "::endgroup::"
+          echo "::group::postgres logs"
+          docker compose logs postgres || true
+          echo "::endgroup::"
+
+      - name: Tear down
+        if: always()
+        working-directory: devscope
+        run: docker compose down -v --remove-orphans || true

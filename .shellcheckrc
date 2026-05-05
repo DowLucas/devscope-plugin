@@ -1,0 +1,23 @@
+# shellcheck configuration for devscope-plugin
+#
+# Severity floor for CI is set in the workflow (warning). The codes below are
+# disabled because the existing scripts trip them on patterns that are either
+# intentional or not worth the churn for this CI-bootstrap PR. Each entry has
+# an associated cleanup follow-up — see DEV-17 follow-ups in the issue thread.
+
+# SC2174: `mkdir -p -m 0700` — perms only apply to the deepest dir. The parent
+# `~/.cache/devscope` is intentionally world-readable, so this is fine.
+disable=SC2174
+
+# SC2005: `echo $(cmd)` style. Cosmetic; existing helpers use it intentionally
+# to normalise whitespace in some places.
+disable=SC2005
+
+# SC2034: unused variables. `install.sh` defines a full ANSI palette where
+# some colors are reserved for future prompt UI.
+disable=SC2034
+
+# SC2295: pattern expansion in `${var#$prefix}`. The two call sites pass real
+# filesystem paths that don't contain glob metacharacters; flagged for
+# follow-up cleanup but not a present-day bug.
+disable=SC2295
