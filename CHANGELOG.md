@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.3] - 2026-05-05
+
+### Added
+- GitHub Actions CI on every PR (`.github/workflows/ci.yml`):
+  - `shellcheck` over all hook scripts, the installer, and the new test
+    helpers (severity = `warning`, with a documented `.shellcheckrc`).
+  - `hooks.json` consistency check (`tests/check-hooks-consistency.sh`):
+    every script referenced in `hooks/hooks.json` must exist on disk, every
+    `scripts/*.sh` must be wired in `hooks.json` or on an explicit excluded
+    allow-list (`_helpers.sh`, `send-event.sh`, `setup.sh`).
+  - Smoke POST against a freshly-built DevScope backend container: replays
+    recorded hook stdin fixtures (`tests/smoke/fixtures/`) through the real
+    hook scripts and asserts the backend returns 2xx for every event.
+
 ## [0.3.1] - 2026-03-04
 
 ### Changed

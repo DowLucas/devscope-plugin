@@ -1,0 +1,6 @@
+{
+  "session_id": "smoke-session-0001",
+  "cwd": "__SMOKE_CWD__",
+  "prompt": "Smoke test prompt — please ignore.",
+  "is_continuation": false
+}

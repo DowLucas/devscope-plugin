@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck --version
+      - name: Lint hook scripts and installer
+        run: |
+          shellcheck --severity=warning -x \
+            scripts/*.sh \
+            install.sh \
+            tests/check-hooks-consistency.sh \
+            tests/smoke/run.sh
+
+  hooks-consistency:
+    name: hooks.json consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify every hook script is wired or excluded
+        run: bash tests/check-hooks-consistency.sh
+
+  smoke:
+    name: smoke POST against fresh backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Checkout devscope backend
+        uses: actions/checkout@v4
+        with:
+          repository: DowLucas/devscope
+          ref: main
+          path: devscope
+
+      - name: Generate ephemeral test secrets
+        # Random per-run values keep the workflow free of hard-coded
+        # secret-shaped strings (which trip GitGuardian and similar scanners).
+        # These are throwaway; the container is destroyed at the end of the run.
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "BETTER_AUTH_SECRET=$(openssl rand -hex 24)"
+            echo "DEVSCOPE_ADMIN_PASSWORD=$(openssl rand -hex 16)"
+            echo "DEVSCOPE_ADMIN_EMAIL=smoke@devscope.test"
+            # Match better-auth trustedOrigins / BETTER_AUTH_URL to the
+            # actual base URL we hit so sign-in/api-key calls aren't
+            # rejected with 403.
+            echo "GC_CORS_ORIGIN=http://localhost:6767"
+            echo "BETTER_AUTH_URL=http://localhost:6767"
+          } >> "$GITHUB_ENV"
+
+      - name: Build and start postgres + backend
+        working-directory: devscope
+        run: |
+          docker compose up -d --build postgres backend
+          docker compose ps
+
+      - name: Wait for backend health and mint a smoke API key
+        env:
+          DEVSCOPE_URL: http://localhost:6767
+        run: |
+          set -euo pipefail
+          # Wait for /api/health (backend runs migrations on boot, can take a few seconds).
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 "$DEVSCOPE_URL/api/health" >/dev/null 2>&1; then
+              echo "Backend healthy after ${i}s"; break
+            fi
+            [ "$i" -eq 60 ] && { echo "Backend never became healthy"; exit 1; }
+            sleep 1
+          done
+
+          # Sign in as the seeded admin and mint an API key. The events ingest
+          # route requires either a session cookie or x-api-key header.
+          curl -fsS -c /tmp/cj.txt -X POST "$DEVSCOPE_URL/api/auth/sign-in/email" \
+            -H 'Content-Type: application/json' \
+            -H "Origin: $DEVSCOPE_URL" \
+            -d "$(jq -n --arg e "$DEVSCOPE_ADMIN_EMAIL" --arg p "$DEVSCOPE_ADMIN_PASSWORD" '{email:$e, password:$p}')" \
+            -o /tmp/signin.json
+          curl -fsS -b /tmp/cj.txt -X POST "$DEVSCOPE_URL/api/auth/api-key/create" \
+            -H 'Content-Type: application/json' \
+            -H "Origin: $DEVSCOPE_URL" \
+            -d '{"name":"smoke"}' \
+            -o /tmp/keyresp.json
+          # Surface the create response shape so we can debug auth on CI.
+          # The actual key string is masked via ::add-mask:: below.
+          jq 'del(.key)' /tmp/keyresp.json || cat /tmp/keyresp.json
+          KEY=$(jq -r '.key' /tmp/keyresp.json)
+          if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
+            echo "Failed to mint API key" >&2
+            cat /tmp/keyresp.json >&2
+            exit 1
+          fi
+          echo "::add-mask::$KEY"
+          # Sanity check: hit /api/verify-connection (uses x-api-key) so a
+          # broken key fails THIS step rather than the smoke replay step.
+          VC=$(curl -s -o /tmp/vc.json -w '%{http_code}' --max-time 5 \
+            -X POST "$DEVSCOPE_URL/api/verify-connection" \
+            -H "x-api-key: $KEY" \
+            -H "x-requested-with: smoke-ci")
+          echo "verify-connection HTTP=$VC body=$(cat /tmp/vc.json)"
+          if [ "$VC" != "200" ]; then
+            echo "API key minted but /api/verify-connection rejected it" >&2
+            exit 1
+          fi
+          echo "DEVSCOPE_API_KEY=$KEY" >> "$GITHUB_ENV"
+
+      - name: Replay hook fixtures and assert 2xx
+        working-directory: plugin
+        env:
+          DEVSCOPE_URL: http://localhost:6767
+        run: bash tests/smoke/run.sh
+
+      - name: Backend logs (on failure)
+        if: failure()
+        working-directory: devscope
+        run: |
+          echo "::group::backend logs"
+          docker compose logs backend || true
+          echo "::endgroup::"
+          echo "::group::postgres logs"
+          docker compose logs postgres || true
+          echo "::endgroup::"
+
+      - name: Tear down
+        if: always()
+        working-directory: devscope
+        run: docker compose down -v --remove-orphans || true
