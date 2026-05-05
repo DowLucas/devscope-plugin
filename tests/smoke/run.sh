@@ -119,11 +119,14 @@ probe_event=$(jq -n \
     payload: {source: "smoke"}
   }')
 
-probe_status=$(curl -s -o /dev/null -w '%{http_code}' \
-  --max-time 5 \
-  -X POST "$DEVSCOPE_URL/api/events" \
-  -H 'Content-Type: application/json' \
+probe_args=(-s -o /dev/null -w '%{http_code}' --max-time 5
+  -X POST "$DEVSCOPE_URL/api/events"
+  -H 'Content-Type: application/json'
   -d "$probe_event")
+if [ -n "${DEVSCOPE_API_KEY:-}" ]; then
+  probe_args+=(-H "x-api-key: $DEVSCOPE_API_KEY")
+fi
+probe_status=$(curl "${probe_args[@]}")
 
 if [ "$probe_status" != "200" ]; then
   log "ERROR: direct POST /api/events probe returned HTTP $probe_status (expected 200)"

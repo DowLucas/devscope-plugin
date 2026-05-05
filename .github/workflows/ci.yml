@@ -66,6 +66,35 @@ jobs:
           docker compose up -d --build postgres backend
           docker compose ps
 
+      - name: Wait for backend health and mint a smoke API key
+        env:
+          DEVSCOPE_URL: http://localhost:6767
+        run: |
+          set -euo pipefail
+          # Wait for /api/health (backend runs migrations on boot, can take a few seconds).
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 "$DEVSCOPE_URL/api/health" >/dev/null 2>&1; then
+              echo "Backend healthy after ${i}s"; break
+            fi
+            [ "$i" -eq 60 ] && { echo "Backend never became healthy"; exit 1; }
+            sleep 1
+          done
+
+          # Sign in as the seeded admin and mint an API key. The events ingest
+          # route requires either a session cookie or x-api-key header.
+          curl -fsS -c /tmp/cj.txt -X POST "$DEVSCOPE_URL/api/auth/sign-in/email" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg e "$DEVSCOPE_ADMIN_EMAIL" --arg p "$DEVSCOPE_ADMIN_PASSWORD" '{email:$e, password:$p}')" \
+            -o /tmp/signin.json
+          KEY=$(curl -fsS -b /tmp/cj.txt -X POST "$DEVSCOPE_URL/api/auth/api-key/create" \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"smoke"}' | jq -r '.key')
+          if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
+            echo "Failed to mint API key" >&2
+            exit 1
+          fi
+          echo "DEVSCOPE_API_KEY=$KEY" >> "$GITHUB_ENV"
+
       - name: Replay hook fixtures and assert 2xx
         working-directory: plugin
         env:
