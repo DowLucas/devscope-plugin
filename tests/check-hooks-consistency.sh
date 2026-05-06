@@ -22,6 +22,8 @@ EXCLUDED=(
   "_helpers.sh"
   "send-event.sh"
   "setup.sh"
+  "queue.sh"
+  "drain-queue.sh"
 )
 
 if [ ! -f "$HOOKS_JSON" ]; then

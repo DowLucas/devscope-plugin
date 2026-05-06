@@ -6,6 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/_helpers.sh"
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/queue.sh"
 
 EVENT_TYPE="$1"
 INPUT=$(cat)
@@ -81,8 +83,25 @@ if [ -n "${DEVSCOPE_API_KEY:-}" ]; then
 fi
 
 HTTP_CODE=$(echo "$CURL_CONFIG" | curl --config - "${CURL_ARGS[@]}" 2>/dev/null) || true
-if [ -n "$HTTP_CODE" ] && [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "000" ]; then
-  echo "[devscope] Event delivery failed (HTTP $HTTP_CODE) to ${DEVSCOPE_URL}" >&2
-fi
+[ -z "$HTTP_CODE" ] && HTTP_CODE="000"
+
+case "$HTTP_CODE" in
+  2*)
+    # Backend has it. Try to drain anything queued from earlier outages.
+    if [ -z "${DEVSCOPE_NO_DRAIN:-}" ]; then
+      ( "$SCRIPT_DIR/drain-queue.sh" >/dev/null 2>&1 & ) >/dev/null 2>&1
+    fi
+    ;;
+  4*)
+    # Backend rejected this specific event — log and drop. Don't queue:
+    # retrying a malformed event would just fill the buffer.
+    echo "[devscope] Event delivery failed (HTTP $HTTP_CODE) to ${DEVSCOPE_URL}" >&2
+    ;;
+  *)
+    # 000 (network error / timeout) or 5xx (server problem) — buffer it.
+    echo "[devscope] Event delivery failed (HTTP $HTTP_CODE) to ${DEVSCOPE_URL}; queued for retry" >&2
+    printf '%s' "$EVENT" | _ds_queue_enqueue "$EVENT_ID" || true
+    ;;
+esac
 
 exit 0
