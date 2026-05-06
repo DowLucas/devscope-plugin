@@ -22,7 +22,8 @@ jobs:
             scripts/*.sh \
             install.sh \
             tests/check-hooks-consistency.sh \
-            tests/smoke/run.sh
+            tests/smoke/run.sh \
+            tests/queue/run.sh
 
   hooks-consistency:
     name: hooks.json consistency
@@ -31,6 +32,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify every hook script is wired or excluded
         run: bash tests/check-hooks-consistency.sh
+
+  queue-buffer:
+    name: retry queue integration test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run queue test (no backend required — uses bundled stub server)
+        run: bash tests/queue/run.sh
 
   smoke:
     name: smoke POST against fresh backend
