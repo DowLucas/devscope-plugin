@@ -109,17 +109,35 @@ fi
 # and assert a 2xx response. This is the authoritative smoke signal: the
 # /api/events/recent feed is auth-gated, but POST /api/events is open (and is
 # the exact endpoint every hook script targets via send-event.sh).
+# Mirror send-event.sh's privacy redaction so the probe payload matches what
+# real hooks would emit in the active privacy mode. In `private`, projectPath
+# becomes `hash:<sha256(CWD)[:12]>` and projectName is `redacted` (DEV-67).
+if [ "${DEVSCOPE_PRIVACY:-standard}" = "private" ]; then
+  if command -v sha256sum >/dev/null 2>&1; then
+    probe_path_hash=$(printf '%s' "/tmp/smoke" | sha256sum | cut -d' ' -f1 | cut -c1-12)
+  else
+    probe_path_hash=$(printf '%s' "/tmp/smoke" | shasum -a 256 | cut -d' ' -f1 | cut -c1-12)
+  fi
+  probe_project_path="hash:${probe_path_hash}"
+  probe_project_name="redacted"
+else
+  probe_project_path="/tmp/smoke"
+  probe_project_name="smoke"
+fi
+
 probe_event=$(jq -n \
   --arg id "smoke-probe-$(date +%s%N)" \
   --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" \
+  --arg ppath "$probe_project_path" \
+  --arg pname "$probe_project_name" \
   '{
     id: $id,
     timestamp: $ts,
     sessionId: "smoke-session-probe",
     developerId: "smoke-dev",
     developerName: "Smoke Probe",
-    projectPath: "/tmp/smoke",
-    projectName: "smoke",
+    projectPath: $ppath,
+    projectName: $pname,
     eventType: "session.start",
     payload: {source: "smoke"}
   }')

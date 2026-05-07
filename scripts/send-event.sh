@@ -38,14 +38,27 @@ EVENT_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null |
 
 TIMESTAMP=$(_ds_timestamp)
 
+# Privacy: in `private` mode, replace projectPath/projectName with redacted
+# stand-ins. The path becomes a stable hash of the absolute CWD so the backend
+# can still group sessions; the name is replaced wholesale because the basename
+# can itself be sensitive (e.g. `acme-acquisition-spike`). Other privacy modes
+# are unchanged. See DEV-67.
+if [ "${DEVSCOPE_PRIVACY:-standard}" = "private" ]; then
+  PROJECT_PATH_OUT="hash:$(_ds_sha256 "$CWD" | cut -c1-12)"
+  PROJECT_NAME_OUT="redacted"
+else
+  PROJECT_PATH_OUT="$CWD"
+  PROJECT_NAME_OUT="$PROJECT_NAME"
+fi
+
 EVENT=$(jq -n \
   --arg id "$EVENT_ID" \
   --arg ts "$TIMESTAMP" \
   --arg sid "$SESSION_ID" \
   --arg did "$DEV_ID" \
   --arg dname "$DEV_NAME" \
-  --arg ppath "$CWD" \
-  --arg pname "$PROJECT_NAME" \
+  --arg ppath "$PROJECT_PATH_OUT" \
+  --arg pname "$PROJECT_NAME_OUT" \
   --arg etype "$EVENT_TYPE" \
   --argjson payload "$PAYLOAD" \
   '{
