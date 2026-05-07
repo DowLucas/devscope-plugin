@@ -195,17 +195,51 @@ case "$DEVSCOPE_PRIVACY" in
   full)     DEVSCOPE_PRIVACY="open" ;;
 esac
 
-# Sanitize tool input for privacy — extract only safe metadata keys
+# Sanitize tool input for privacy — extract only safe metadata keys.
+# In `private` mode, path-like fields (file_path, Grep/Glob pattern+path) are
+# hashed at emit using `[redacted:<12-char-sha>]` form (same precedent as
+# tool-complete.sh file-change cache) so raw paths never leave the host.
+# `standard`/`open` modes preserve the prior behaviour.
 _ds_sanitize_tool_input() {
   local tool_name="$1"
   local tool_input="$2"
 
   case "$tool_name" in
     Read|Write|Edit)
-      echo "$tool_input" | jq -c '{file_path: .file_path} // {}' 2>/dev/null || echo '{}'
+      if [ "$DEVSCOPE_PRIVACY" = "private" ]; then
+        local _fp _h
+        _fp=$(echo "$tool_input" | jq -r '.file_path // empty' 2>/dev/null)
+        if [ -n "$_fp" ]; then
+          _h=$(_ds_sha256 "$_fp")
+          jq -nc --arg v "[redacted:${_h:0:12}]" '{file_path: $v}'
+        else
+          echo '{"file_path":null}'
+        fi
+      else
+        echo "$tool_input" | jq -c '{file_path: .file_path} // {}' 2>/dev/null || echo '{}'
+      fi
       ;;
     Grep|Glob)
-      echo "$tool_input" | jq -c '{pattern: .pattern, path: .path} // {}' 2>/dev/null || echo '{}'
+      if [ "$DEVSCOPE_PRIVACY" = "private" ]; then
+        local _pat _path _hp _ha _vp _va
+        _pat=$(echo "$tool_input" | jq -r '.pattern // empty' 2>/dev/null)
+        _path=$(echo "$tool_input" | jq -r '.path // empty' 2>/dev/null)
+        _vp=""
+        _va=""
+        if [ -n "$_pat" ]; then
+          _hp=$(_ds_sha256 "$_pat")
+          _vp="[redacted:${_hp:0:12}]"
+        fi
+        if [ -n "$_path" ]; then
+          _ha=$(_ds_sha256 "$_path")
+          _va="[redacted:${_ha:0:12}]"
+        fi
+        jq -nc --arg p "$_vp" --arg a "$_va" \
+          '{pattern: (if $p == "" then null else $p end),
+            path:    (if $a == "" then null else $a end)}'
+      else
+        echo "$tool_input" | jq -c '{pattern: .pattern, path: .path} // {}' 2>/dev/null || echo '{}'
+      fi
       ;;
     Skill)
       echo "$tool_input" | jq -c '{skill: .skill} // {}' 2>/dev/null || echo '{}'
