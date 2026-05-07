@@ -9,12 +9,15 @@ INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // "unknown"')
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // ""')
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 
 # Privacy-aware tool input
 if [ "$DEVSCOPE_PRIVACY" = "standard" ] || [ "$DEVSCOPE_PRIVACY" = "open" ]; then
   TOOL_INPUT=$(echo "$INPUT" | jq -c '.tool_input // null')
 else
-  TOOL_INPUT=$(_ds_sanitize_tool_input "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')")
+  # CWD is passed through so private-mode hashing can compute repo-relative
+  # paths against the session's repo root (DEV-74).
+  TOOL_INPUT=$(_ds_sanitize_tool_input "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')" "$CWD")
 fi
 
 # Sanitize for safe temp file paths

@@ -13,12 +13,15 @@ AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // ""')
 ERROR_MSG_SHORT=$(echo "$INPUT" | jq -r '.error // "" | tostring | .[:100]')
 ERROR_MSG_FULL=$(echo "$INPUT" | jq -r '.error // "" | tostring | .[:500]')
 IS_INTERRUPT=$(echo "$INPUT" | jq -r '.is_interrupt // false')
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 
 # Privacy-aware tool input
 if [ "$DEVSCOPE_PRIVACY" = "open" ]; then
   TOOL_INPUT=$(echo "$INPUT" | jq -c '.tool_input // null')
 else
-  TOOL_INPUT=$(_ds_sanitize_tool_input "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')")
+  # CWD is passed through so private-mode hashing can compute repo-relative
+  # paths against the session's repo root (DEV-74).
+  TOOL_INPUT=$(_ds_sanitize_tool_input "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')" "$CWD")
 fi
 
 # Privacy-aware tool result (same gating as tool_input)
