@@ -66,6 +66,9 @@ if [ -n "$CWD" ] && [ -n "$CC_SESSION_ID" ]; then
     # Clean stale tracking files from prior crashed sessions
     rm -f "${GC_CACHE_DIR}/${PROJECT_HASH}.files"
     rm -f "${GC_CACHE_DIR}/${PROJECT_HASH}.agents"
+    # DEV-74: drop any stale per-org salt — a fresh session.start will re-pin
+    # it from the backend response (and the org may have changed in between).
+    rm -f "${GC_CACHE_DIR}/${PROJECT_HASH}.salt"
   else
     # clear/resume/compact — preserve existing DevScope session
     if [ -f "$STATE_FILE" ]; then

@@ -195,17 +195,127 @@ case "$DEVSCOPE_PRIVACY" in
   full)     DEVSCOPE_PRIVACY="open" ;;
 esac
 
-# Sanitize tool input for privacy — extract only safe metadata keys
+# Repo-relative path. Returns the path relative to the git repo root that
+# contains $cwd, or empty if the target is outside the repo (or repo
+# resolution fails). Pure read-only — `git rev-parse --show-toplevel` is fast
+# and side-effect-free, so we recompute per call rather than maintain a
+# session cache. DEV-74.
+_ds_repo_relative() {
+  local target="$1"
+  local cwd="$2"
+  [ -z "$target" ] || [ -z "$cwd" ] && return 0
+  local repo_root
+  repo_root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || return 0
+  [ -z "$repo_root" ] && return 0
+  case "$target" in
+    "$repo_root") printf '%s' "." ;;
+    "$repo_root"/*) printf '%s' "${target#$repo_root/}" ;;
+    *) ;;  # outside repo — caller buckets via [ext-redacted:…]
+  esac
+}
+
+# Read the per-session org salt that `session.start` cached locally
+# (see send-event.sh). Empty if no cache yet (e.g. first event before
+# session.start completes, or the backend doesn't expose a salt).
+_ds_load_salt() {
+  local cwd="$1"
+  [ -z "$cwd" ] && return 0
+  local _ph _f
+  _ph=$(_ds_project_hash "$cwd")
+  _f="${HOME}/.cache/devscope/${_ph}.salt"
+  [ -f "$_f" ] || return 0
+  awk -F= '$1=="SALT"{print $2; exit}' "$_f" 2>/dev/null
+}
+
+# Read the salt_version stamped by `session.start`. Empty if no cache yet.
+_ds_load_salt_version() {
+  local cwd="$1"
+  [ -z "$cwd" ] && return 0
+  local _ph _f
+  _ph=$(_ds_project_hash "$cwd")
+  _f="${HOME}/.cache/devscope/${_ph}.salt"
+  [ -f "$_f" ] || return 0
+  awk -F= '$1=="SALT_VERSION"{print $2; exit}' "$_f" 2>/dev/null
+}
+
+# Hash a path-like value for `private` mode. In-repo paths are normalized to
+# repo-relative and emitted as `[redacted:<16-hex>]`; out-of-repo paths use
+# the absolute path with the `[ext-redacted:<16-hex>]` prefix so they bucket
+# separately from in-repo hashes (per DEV-72 spike).
+# Hash input is `salt || normalized_path` — the org salt unlocks
+# cross-developer clustering at the same org while preventing rainbow-table
+# reversal (DEV-72 no-reverse-map rule).
+_ds_hash_path() {
+  local target="$1"
+  local cwd="$2"
+  local salt rel hash
+  salt=$(_ds_load_salt "$cwd")
+  rel=$(_ds_repo_relative "$target" "$cwd")
+  if [ -n "$rel" ]; then
+    hash=$(_ds_sha256 "${salt}${rel}")
+    printf '[redacted:%s]' "${hash:0:16}"
+  else
+    hash=$(_ds_sha256 "${salt}${target}")
+    printf '[ext-redacted:%s]' "${hash:0:16}"
+  fi
+}
+
+# Hash a Grep/Glob pattern (regex/glob — not a path, so no repo-relative
+# normalization). Always emits `[redacted:…]`.
+_ds_hash_pattern() {
+  local pattern="$1"
+  local cwd="$2"
+  local salt hash
+  salt=$(_ds_load_salt "$cwd")
+  hash=$(_ds_sha256 "${salt}${pattern}")
+  printf '[redacted:%s]' "${hash:0:16}"
+}
+
+# Sanitize tool input for privacy — extract only safe metadata keys.
+# In `private` mode (DEV-74), path-like fields are hashed at emit using
+# org-salted, repo-relative normalization:
+#   - Read|Write|Edit `file_path` → `[redacted:<16-hex>]` (in-repo) or
+#     `[ext-redacted:<16-hex>]` (out-of-repo).
+#   - Grep|Glob `path` → same as above; `pattern` → `[redacted:<16-hex>]`.
+# Hash input is `salt || normalized_path` where the salt is per-org, fetched
+# from the `session.start` response and cached locally. See the
+# no-reverse-map rule on DEV-72.
+# `standard`/`open` modes are unchanged. Bash/Skill/default arms unchanged.
 _ds_sanitize_tool_input() {
   local tool_name="$1"
   local tool_input="$2"
+  local cwd="${3:-${PWD:-}}"
 
   case "$tool_name" in
     Read|Write|Edit)
-      echo "$tool_input" | jq -c '{file_path: .file_path} // {}' 2>/dev/null || echo '{}'
+      if [ "$DEVSCOPE_PRIVACY" = "private" ]; then
+        local _fp _hashed
+        _fp=$(echo "$tool_input" | jq -r '.file_path // empty' 2>/dev/null)
+        if [ -n "$_fp" ]; then
+          _hashed=$(_ds_hash_path "$_fp" "$cwd")
+          jq -nc --arg v "$_hashed" '{file_path: $v}'
+        else
+          echo '{"file_path":null}'
+        fi
+      else
+        echo "$tool_input" | jq -c '{file_path: .file_path} // {}' 2>/dev/null || echo '{}'
+      fi
       ;;
     Grep|Glob)
-      echo "$tool_input" | jq -c '{pattern: .pattern, path: .path} // {}' 2>/dev/null || echo '{}'
+      if [ "$DEVSCOPE_PRIVACY" = "private" ]; then
+        local _pat _path _vp _va
+        _pat=$(echo "$tool_input" | jq -r '.pattern // empty' 2>/dev/null)
+        _path=$(echo "$tool_input" | jq -r '.path // empty' 2>/dev/null)
+        _vp=""
+        _va=""
+        [ -n "$_pat" ] && _vp=$(_ds_hash_pattern "$_pat" "$cwd")
+        [ -n "$_path" ] && _va=$(_ds_hash_path "$_path" "$cwd")
+        jq -nc --arg p "$_vp" --arg a "$_va" \
+          '{pattern: (if $p == "" then null else $p end),
+            path:    (if $a == "" then null else $a end)}'
+      else
+        echo "$tool_input" | jq -c '{pattern: .pattern, path: .path} // {}' 2>/dev/null || echo '{}'
+      fi
       ;;
     Skill)
       echo "$tool_input" | jq -c '{skill: .skill} // {}' 2>/dev/null || echo '{}'
