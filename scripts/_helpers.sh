@@ -30,6 +30,18 @@ _ds_sha256() {
   fi
 }
 
+# Normalize an email for identity derivation (lowercase + trim whitespace).
+# Must match backend's `computeDeveloperId` in
+# devscope/packages/backend/src/services/developerLink.ts which does
+# `email.toLowerCase().trim()` before SHA256. Plugin and backend MUST agree on
+# this normalization or the same human ends up with split developer rows.
+# Call this on any email before passing it to `_ds_sha256` for identity hashes
+# (developerId and any session-/project-hash that mixes email into the input).
+_ds_normalize_email() {
+  # tr lowercases; awk strips leading/trailing whitespace (POSIX-portable trim).
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | awk '{ gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print }'
+}
+
 # Nanosecond timestamp — Linux uses GNU date, macOS falls back to python3/perl/seconds
 _ds_now_ns() {
   local ns
@@ -60,6 +72,9 @@ _ds_project_hash() {
   local cwd="$1"
   local email
   email=$(git -C "$cwd" config user.email 2>/dev/null || echo "${USER}@local")
+  # Normalize so a mixed-case `git user.email` doesn't fork the local
+  # session-state file from the developerId derivation in send-event.sh.
+  email=$(_ds_normalize_email "$email")
   _ds_sha256 "${email}:${cwd}:${PPID}"
 }
 

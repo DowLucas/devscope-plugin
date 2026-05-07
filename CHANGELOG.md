@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.1] - 2026-05-07
+
+### Fixed
+- Developer ID now lowercases + trims `git config user.email` before SHA256, matching the
+  backend's `computeDeveloperId` (`devscope/packages/backend/src/services/developerLink.ts`).
+  Previously, a mixed-case git email (e.g. `Test.User@Example.COM`) would hash differently on
+  the plugin side than on the backend and fork the same human into two `developers` rows.
+  Session/project hashes that mix the email into their input (`send-event.sh`,
+  `session-start.sh`, `_ds_project_hash`) are also normalized so case-different emails resolve
+  to the same on-disk session-state file.
+
+### Added
+- `_ds_normalize_email` helper in `scripts/_helpers.sh` so the normalization is auditable in
+  one place and `_ds_sha256` stays a pure hash primitive.
+
+### Notes for operators
+- A backend that received events from a pre-`0.11.1` plugin **and** a post-`0.11.1` plugin for
+  the same human with a mixed-case git email will have two `developers` rows for that human.
+  The fix only stops the bleeding; previously-split rows need a one-time backend merge. That
+  backfill is tracked as a separate follow-up issue and is not in scope here.
+
 ## [0.9.3] - 2026-05-05
 
 ### Added
