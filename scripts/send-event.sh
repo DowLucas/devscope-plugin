@@ -20,6 +20,9 @@ PROJECT_NAME=$(basename "$CWD" 2>/dev/null || echo "unknown")
 # PPID identifies the Claude Code process, keeping concurrent sessions separate
 if [ -n "$CWD" ]; then
   _GC_DEV_EMAIL=$(git -C "$CWD" config user.email 2>/dev/null || echo "${USER}@local")
+  # Normalize email so the session-state filename matches across case-different
+  # `git user.email` values, and matches session-start.sh's PROJECT_HASH.
+  _GC_DEV_EMAIL=$(_ds_normalize_email "$_GC_DEV_EMAIL")
   _GC_HASH=$(_ds_sha256 "${_GC_DEV_EMAIL}:${CWD}:${PPID}")
   _GC_STATE="${HOME}/.cache/devscope/${_GC_HASH}.session"
   if [ -f "$_GC_STATE" ]; then
@@ -30,7 +33,12 @@ fi
 
 DEV_NAME=$(git -C "$CWD" config user.name 2>/dev/null || echo "$USER")
 DEV_EMAIL=$(git -C "$CWD" config user.email 2>/dev/null || echo "${USER}@local")
-DEV_ID=$(_ds_sha256 "$DEV_EMAIL")
+# Normalize before hashing so developerId matches the backend's
+# computeDeveloperId() in packages/backend/src/services/developerLink.ts,
+# which lowercases + trims before SHA256. Without this a mixed-case
+# `git user.email` produces a different developerId on the plugin side and
+# forks the same human into two developer rows.
+DEV_ID=$(_ds_sha256 "$(_ds_normalize_email "$DEV_EMAIL")")
 
 PAYLOAD="${2:-$(echo "$INPUT" | jq -c '{raw: .}')}"
 

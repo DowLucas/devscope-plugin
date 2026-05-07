@@ -53,7 +53,10 @@ if [ -n "$CWD" ] && [ -n "$CC_SESSION_ID" ]; then
   DEV_EMAIL=$(git -C "$CWD" config user.email 2>/dev/null || echo "${USER}@local")
   # Include PPID so concurrent sessions in the same project get separate state files.
   # PPID = Claude Code process PID, consistent across context clears but unique per instance.
-  PROJECT_HASH=$(_ds_sha256 "${DEV_EMAIL}:${CWD}:${PPID}")
+  # Normalize email to keep the project hash consistent with send-event.sh and
+  # _ds_project_hash, so case-different git user.email values resolve to the
+  # same on-disk session state file.
+  PROJECT_HASH=$(_ds_sha256 "$(_ds_normalize_email "$DEV_EMAIL"):${CWD}:${PPID}")
   STATE_FILE="${GC_CACHE_DIR}/${PROJECT_HASH}.session"
 
   if [ "$START_TYPE" = "startup" ]; then
