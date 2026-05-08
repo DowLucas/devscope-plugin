@@ -9,6 +9,15 @@ AGENT_TYPE=$(echo "$INPUT" | jq -r '.agent_type // "unknown"')
 AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // ""')
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 
+# SubagentStop rich fields (DEV-95 / DowLucas/devscope#4).
+# We capture only the LENGTH of the last assistant message — never the raw
+# body — so subagent verbosity/output-volume can be analyzed without
+# surfacing message content to other developers. The transcript path is a
+# local-fs reference and is safe to store as metadata.
+LAST_MSG=$(echo "$INPUT" | jq -r '.last_assistant_message // ""' 2>/dev/null)
+LAST_MSG_LENGTH=${#LAST_MSG}
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.agent_transcript_path // ""' 2>/dev/null)
+
 # Pop agent from stack and find parent
 PARENT_AGENT_ID=""
 if [ -n "$CWD" ] && [ -n "$AGENT_ID" ]; then
@@ -31,8 +40,15 @@ if [ -n "$CWD" ] && [ -n "$AGENT_ID" ]; then
   fi
 fi
 
-PAYLOAD=$(jq -n --arg at "$AGENT_TYPE" --arg ai "$AGENT_ID" --arg pai "$PARENT_AGENT_ID" \
+PAYLOAD=$(jq -n \
+  --arg at "$AGENT_TYPE" \
+  --arg ai "$AGENT_ID" \
+  --arg pai "$PARENT_AGENT_ID" \
+  --argjson lml "$LAST_MSG_LENGTH" \
+  --arg tp "$TRANSCRIPT_PATH" \
   '{agentType: $at, agentId: $ai}
-   | if $pai != "" then . + {parentAgentId: $pai} else . end')
+   | if $pai != "" then . + {parentAgentId: $pai} else . end
+   | if $lml > 0 then . + {lastMessageLength: $lml} else . end
+   | if $tp != "" then . + {transcriptPath: $tp} else . end')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "agent.stop" "$PAYLOAD"
