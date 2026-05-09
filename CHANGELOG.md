@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.0] - 2026-05-09
+
+### Added
+- `tool_use_id` is now forwarded as `toolUseId` on `tool.start`, `tool.complete`, and
+  `tool.fail` payloads (DEV-94). Lets the backend/dashboard pair start/complete events
+  reliably even when the same tool runs concurrently in parallel sub-agent calls.
+- `scripts/tool-use.sh` and `scripts/tool-complete.sh` use a `tool_use_id`-scoped path
+  for the per-call timing file (`~/.cache/devscope/timings/<session>_<toolUseId>`).
+  Falls back to the legacy `<session>_<toolName>` path when the host hook input does
+  not include `tool_use_id`.
+- `PermissionRequest` hook now captures `tool_input` as `toolInput` in the event payload
+  (DEV-96, closes DowLucas/devscope#6). In `private` mode the same redaction helper used
+  by `tool.start` is applied: Bash command is fully redacted, Write content and Edit
+  old/new strings are dropped, file paths and Grep/Glob patterns are hashed with an
+  org-salted SHA256. `permission_suggestions` is intentionally omitted (low signal).
+
+### Notes for operators
+- Backwards-compatible: older plugin versions that don't emit `toolUseId` continue to
+  work; consumers fall back to (toolName, toolSubcommand) pairing.
+- Privacy guarantee: `toolInput` on `permission.request` follows the same redaction
+  contract as `tool.start` — no Bash commands, write payloads, or edit arguments leak
+  in `private` mode.
+
 ## [0.11.1] - 2026-05-07
 
 ### Fixed

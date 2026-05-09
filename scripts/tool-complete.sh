@@ -10,6 +10,10 @@ TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // "unknown"')
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // "PostToolUse"')
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // ""')
+# DEV-94: per-invocation correlation id from PostToolUse hook. Used as a
+# payload field for backend/dashboard pairing AND to look up the matching
+# start-timestamp file even when the same tool is running concurrently.
+TOOL_USE_ID=$(echo "$INPUT" | jq -r '.tool_use_id // ""')
 ERROR_MSG_SHORT=$(echo "$INPUT" | jq -r '.error // "" | tostring | .[:100]')
 ERROR_MSG_FULL=$(echo "$INPUT" | jq -r '.error // "" | tostring | .[:500]')
 IS_INTERRUPT=$(echo "$INPUT" | jq -r '.is_interrupt // false')
@@ -49,12 +53,22 @@ fi
 # Sanitize for safe temp file paths
 SESSION_ID_SAFE=$(echo "$SESSION_ID" | tr -cd 'a-zA-Z0-9_-')
 TOOL_NAME_SAFE=$(echo "$TOOL_NAME" | tr -cd 'a-zA-Z0-9_-')
+TOOL_USE_ID_SAFE=$(echo "$TOOL_USE_ID" | tr -cd 'a-zA-Z0-9_-')
 
-# Calculate duration from start timestamp
+# Calculate duration from start timestamp. DEV-94: prefer the
+# tool_use_id-scoped timing file so we pair with the correct start event for
+# concurrent same-tool invocations. Fall back to the legacy session+toolName
+# path so a complete from an older plugin start (or a host that doesn't
+# emit tool_use_id) still reports a duration.
 DURATION_MS=0
 TIMING_DIR="${HOME}/.cache/devscope/timings"
-TIMING_FILE="${TIMING_DIR}/${SESSION_ID_SAFE}_${TOOL_NAME_SAFE}"
-if [ -f "$TIMING_FILE" ]; then
+TIMING_FILE=""
+if [ -n "$TOOL_USE_ID_SAFE" ] && [ -f "${TIMING_DIR}/${SESSION_ID_SAFE}_${TOOL_USE_ID_SAFE}" ]; then
+  TIMING_FILE="${TIMING_DIR}/${SESSION_ID_SAFE}_${TOOL_USE_ID_SAFE}"
+elif [ -f "${TIMING_DIR}/${SESSION_ID_SAFE}_${TOOL_NAME_SAFE}" ]; then
+  TIMING_FILE="${TIMING_DIR}/${SESSION_ID_SAFE}_${TOOL_NAME_SAFE}"
+fi
+if [ -n "$TIMING_FILE" ] && [ -f "$TIMING_FILE" ]; then
   START_NS=$(cat "$TIMING_FILE")
   NOW_NS=$(_ds_now_ns)
   DURATION_MS=$(( (NOW_NS - START_NS) / 1000000 ))
@@ -105,12 +119,14 @@ PAYLOAD=$(jq -n \
   --argjson tr "${TOOL_RESULT:-null}" \
   --argjson intr "$IS_INTERRUPT" \
   --arg ts "$TOOL_SUBCOMMAND" \
+  --arg tu "$TOOL_USE_ID" \
   '{toolName: $tn, success: $s, duration: $d}
    | if $em != "" then . + {errorMessage: $em} else . end
    | if $ai != "" then . + {agentId: $ai} else . end
    | if $ti != null then . + {toolInput: $ti} else . end
    | if $tr != null then . + {toolResult: $tr} else . end
    | . + {isInterrupt: $intr}
-   | if $ts != "" then . + {toolSubcommand: $ts} else . end')
+   | if $ts != "" then . + {toolSubcommand: $ts} else . end
+   | if $tu != "" then . + {toolUseId: $tu} else . end')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "$EVENT_TYPE" "$PAYLOAD"
