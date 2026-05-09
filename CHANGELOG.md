@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.0] - 2026-05-09
+
+### Added
+- **DEV-94**: `tool_use_id` is now forwarded as `toolUseId` on `tool.start`,
+  `tool.complete`, and `tool.fail` payloads. Lets the backend/dashboard pair
+  start/complete events reliably even when the same tool runs concurrently in
+  parallel sub-agent calls (closes [DowLucas/devscope#3](https://github.com/DowLucas/devscope/issues/3)).
+  - `scripts/tool-use.sh` and `scripts/tool-complete.sh` use a `tool_use_id`-scoped
+    timing-file path (`~/.cache/devscope/timings/<session>_<toolUseId>`) so concurrent
+    same-tool starts each get their own file. Falls back to the legacy
+    `<session>_<toolName>` path when the host hook input omits `tool_use_id`.
+  - Smoke fixtures updated to include `tool_use_id`.
+
+- **DEV-96**: `PermissionRequest` hook events now include `toolInput` in the payload
+  (closes [DowLucas/devscope#6](https://github.com/DowLucas/devscope/issues/6)).
+  - `scripts/permission-request.sh` extracts `tool_input` and applies the same
+    privacy-mode redaction used by `tool-use.sh`: `standard`/`open` modes pass the
+    full input; `private` mode hashes paths, drops command/content/old_string/new_string.
+  - `permission_suggestions` is intentionally omitted (low signal vs. payload size).
+
+### Notes for operators
+- Both changes are backwards-compatible: older plugin versions continue to work;
+  consumers fall back to previous behaviour when the new fields are absent.
+
 ## [0.11.1] - 2026-05-07
 
 ### Fixed
