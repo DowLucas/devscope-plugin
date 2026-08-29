@@ -33,12 +33,43 @@ scripts/
   pre-compact.sh       # PreCompact hook
   task-completed.sh    # TaskCompleted hook
   permission-request.sh # PermissionRequest hook
-  worktree-create.sh   # WorktreeCreate hook
-  worktree-remove.sh   # WorktreeRemove hook
   config-change.sh     # ConfigChange hook
-  setup.sh             # Interactive setup (used by install.sh)
+  tool-batch.sh        # PostToolBatch hook
+  prompt-expansion.sh  # UserPromptExpansion hook
+  response-failed.sh   # StopFailure hook
+  model-switch.sh      # PostModelSwitch hook
+  permission-denied.sh # PermissionDenied hook
+  task-created.sh      # TaskCreated hook
+  cwd-changed.sh       # CwdChanged hook
+  directory-added.sh   # DirectoryAdded hook
+  setup-hook.sh        # Setup hook (plugin init/maintenance)
+  setup.sh             # Interactive setup (used by install.sh) — NOT a hook
 install.sh             # One-liner installer with gum UI
 ```
+
+## Hook Selection Rule
+
+Only register hook events that Claude Code treats as **observations**. Some events
+delegate a *job* to the hook, and registering one makes Claude Code stop doing that
+job itself — merely being registered claims the role, whether or not the hook is
+`async`:
+
+- `WorktreeCreate` / `WorktreeRemove` — Claude Code branches on
+  `hasWorktreeCreateHook()`; a registered hook must create the directory and echo
+  its absolute path, or worktree isolation fails for every repo. **Never register.**
+- `PreModelSwitch` — gates the model switch and waits for an answer; a hook that
+  fails or never answers can block or abort the switch. **Never register.**
+- `MessageDisplay` — rewrites displayed assistant text and fires on every flush of
+  every message. **Never register.**
+
+Events whose output is *optional* (`PreToolUse`, `PostToolUse`, `PostToolBatch`,
+`Stop`, `TaskCompleted`, `PermissionRequest`, `PermissionDenied`, `Elicitation`,
+`UserPromptExpansion`) are safe: staying silent means "no opinion".
+
+Note that `async: true` makes a hook fire-and-forget. Its late response is
+validated against a reduced schema that accepts only `systemMessage`, `metrics`,
+and `hookSpecificOutput.additionalContext` — any permission decision, block, or
+path it prints is discarded. A hook that must return a decision cannot be `async`.
 
 ## Claude Code Marketplace
 
@@ -113,7 +144,12 @@ claude plugin disable devscope@devscope                  # Disable
 
 ## Key Patterns
 
-- All hook scripts are **async and non-blocking** — they must exit quickly and suppress errors
+- Hook scripts are **non-blocking** — they must exit quickly and suppress errors. All but
+  one get this from `"async": true` in `hooks.json`. `PreToolUse` is the exception: it is
+  registered *without* `async` so it can return a `permissionDecision`, and `tool-use.sh`
+  instead announces `{"async": true}` on its first stdout line unless
+  `DEVSCOPE_NUDGE_MODE=hard`. Claude Code backgrounds the process on seeing that line, so
+  the common path costs the session nothing while hard mode stays synchronous and can deny.
 - Cross-platform support: Linux + macOS (SHA256, timestamps, UUID all have OS-specific fallbacks in `_helpers.sh`)
 - Config is read from `~/.config/devscope/config` (or `$XDG_CONFIG_HOME/devscope/config`)
 - Developer identity: `SHA256(git config user.email)`

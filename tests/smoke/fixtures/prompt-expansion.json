@@ -1,0 +1,14 @@
+{
+  "session_id": "smoke-session-0001",
+  "cwd": "__SMOKE_CWD__",
+  "prompt_id": "11111111-2222-3333-4444-555555555555",
+  "permission_mode": "default",
+  "effort": {
+    "level": "high"
+  },
+  "expansion_type": "slash_command",
+  "command_name": "devscope:status",
+  "command_args": "--verbose",
+  "command_source": "plugin",
+  "prompt": "expanded prompt body"
+}

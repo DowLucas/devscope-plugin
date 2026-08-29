@@ -2,20 +2,26 @@
 # Cross-platform helpers for DevScope plugin scripts
 # Sourced by other scripts — not executed directly
 
-# Load config: env var > config file > default
-if [ -z "${DEVSCOPE_URL:-}" ]; then
-  _DS_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/devscope/config"
-  if [ -f "$_DS_CONFIG" ]; then
-    while IFS='=' read -r key value; do
-      key=$(echo "$key" | tr -d ' ')
-      value=$(echo "$value" | sed 's/^"//;s/"$//' | sed "s/^'//;s/'$//")
-      case "$key" in
-        DEVSCOPE_URL) DEVSCOPE_URL="$value" ;;
-        DEVSCOPE_API_KEY) DEVSCOPE_API_KEY="$value" ;;
-        DEVSCOPE_PRIVACY) DEVSCOPE_PRIVACY="$value" ;;
-      esac
-    done < <(grep -v '^#' "$_DS_CONFIG" | grep -v '^$')
-  fi
+# Load config: env var > config file > default.
+#
+# The config file is always consulted, and only fills in values the environment
+# has not already set. Previously this whole block was skipped whenever
+# DEVSCOPE_URL was set (so exporting a URL silently discarded the configured
+# API key and privacy mode), and the assignments overwrote the environment
+# rather than deferring to it (so `DEVSCOPE_PRIVACY=private` in the environment
+# was ignored whenever the config file named a mode — a silent privacy
+# downgrade, the opposite of the documented precedence).
+_DS_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/devscope/config"
+if [ -f "$_DS_CONFIG" ]; then
+  while IFS='=' read -r key value; do
+    key=$(echo "$key" | tr -d ' ')
+    value=$(echo "$value" | sed 's/^"//;s/"$//' | sed "s/^'//;s/'$//")
+    case "$key" in
+      DEVSCOPE_URL)     DEVSCOPE_URL="${DEVSCOPE_URL:-$value}" ;;
+      DEVSCOPE_API_KEY) DEVSCOPE_API_KEY="${DEVSCOPE_API_KEY:-$value}" ;;
+      DEVSCOPE_PRIVACY) DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-$value}" ;;
+    esac
+  done < <(grep -v '^#' "$_DS_CONFIG" | grep -v '^$')
 fi
 DEVSCOPE_URL="${DEVSCOPE_URL:-http://localhost:6767}"
 
@@ -188,6 +194,23 @@ _ds_health_check() {
 
 # Privacy mode: "private", "standard" (default), or "open"
 DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-standard}"
+
+# Proactive nudge layer: "off" | "soft" (default) | "hard"
+#   off  — never inject anything back into the session
+#   soft — surface anti-pattern nudges via PostToolUse stderr (Claude sees them)
+#   hard — also enable PreToolUse hard-block on identical-call retry loops
+DEVSCOPE_NUDGE_MODE="${DEVSCOPE_NUDGE_MODE:-soft}"
+
+# Pre-flight similar-prompts injection on UserPromptSubmit: "on" (default) | "off"
+DEVSCOPE_PREFLIGHT="${DEVSCOPE_PREFLIGHT:-on}"
+
+# Compute a stable hash of (tool_name, raw_tool_input_json). Used by the
+# proactive layer so PreToolUse and PostToolUse agree on identity.
+_ds_tool_input_hash() {
+  local tool_name="$1"
+  local raw_input="$2"
+  _ds_sha256 "${tool_name}|${raw_input}"
+}
 
 # Backwards-compat: map old values to new names silently
 case "$DEVSCOPE_PRIVACY" in

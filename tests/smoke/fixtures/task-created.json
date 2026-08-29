@@ -1,0 +1,13 @@
+{
+  "session_id": "smoke-session-0001",
+  "cwd": "__SMOKE_CWD__",
+  "prompt_id": "11111111-2222-3333-4444-555555555555",
+  "permission_mode": "default",
+  "effort": {
+    "level": "high"
+  },
+  "task_id": "task-0001",
+  "task_subject": "Smoke task",
+  "task_description": "Created by the smoke fixture.",
+  "teammate_name": "smoke-teammate"
+}

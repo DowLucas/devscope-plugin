@@ -196,12 +196,18 @@ awk -F'|' '
 }' "$INTERRUPTS_FILE" > "$CATEGORIES_FILE"
 
 # Count by category
-COURSE_COUNT=$(grep -c "^COURSE_CORRECTION|" "$CATEGORIES_FILE" 2>/dev/null || echo "0")
-QUESTION_COUNT=$(grep -c "^QUESTION|" "$CATEGORIES_FILE" 2>/dev/null || echo "0")
-IMPATIENCE_COUNT=$(grep -c "^IMPATIENCE|" "$CATEGORIES_FILE" 2>/dev/null || echo "0")
-ABANDONMENT_COUNT=$(grep -c "^ABANDONMENT|" "$CATEGORIES_FILE" 2>/dev/null || echo "0")
-NO_FOLLOWUP_COUNT=$(grep -c "^NO_FOLLOWUP|" "$CATEGORIES_FILE" 2>/dev/null || echo "0")
-OTHER_COUNT=$(grep -c "^OTHER|" "$CATEGORIES_FILE" 2>/dev/null || echo "0")
+COURSE_COUNT=$(grep -c "^COURSE_CORRECTION|" "$CATEGORIES_FILE" 2>/dev/null | tr -d '[:space:]' || true)
+COURSE_COUNT=${COURSE_COUNT:-0}
+QUESTION_COUNT=$(grep -c "^QUESTION|" "$CATEGORIES_FILE" 2>/dev/null | tr -d '[:space:]' || true)
+QUESTION_COUNT=${QUESTION_COUNT:-0}
+IMPATIENCE_COUNT=$(grep -c "^IMPATIENCE|" "$CATEGORIES_FILE" 2>/dev/null | tr -d '[:space:]' || true)
+IMPATIENCE_COUNT=${IMPATIENCE_COUNT:-0}
+ABANDONMENT_COUNT=$(grep -c "^ABANDONMENT|" "$CATEGORIES_FILE" 2>/dev/null | tr -d '[:space:]' || true)
+ABANDONMENT_COUNT=${ABANDONMENT_COUNT:-0}
+NO_FOLLOWUP_COUNT=$(grep -c "^NO_FOLLOWUP|" "$CATEGORIES_FILE" 2>/dev/null | tr -d '[:space:]' || true)
+NO_FOLLOWUP_COUNT=${NO_FOLLOWUP_COUNT:-0}
+OTHER_COUNT=$(grep -c "^OTHER|" "$CATEGORIES_FILE" 2>/dev/null | tr -d '[:space:]' || true)
+OTHER_COUNT=${OTHER_COUNT:-0}
 
 echo "  COURSE_CORRECTION: $COURSE_COUNT  (user redirected approach)"
 echo "  QUESTION:          $QUESTION_COUNT  (user asked clarification)"

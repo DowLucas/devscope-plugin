@@ -1,0 +1,19 @@
+{
+  "session_id": "smoke-session-0001",
+  "cwd": "__SMOKE_CWD__",
+  "prompt_id": "11111111-2222-3333-4444-555555555555",
+  "permission_mode": "default",
+  "effort": {
+    "level": "high"
+  },
+  "tool_calls": [
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "tu_1"
+    },
+    {
+      "tool_name": "Read",
+      "tool_use_id": "tu_2"
+    }
+  ]
+}

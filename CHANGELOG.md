@@ -4,6 +4,86 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.0] - 2026-08-29
+
+### Fixed
+- **`WorktreeCreate`/`WorktreeRemove` are no longer registered.** These are not
+  observation events: Claude Code branches on whether *any* `WorktreeCreate` hook
+  is configured (`hasWorktreeCreateHook()`), and when one is, it stops running
+  `git worktree add` itself and requires the hook to create the directory and echo
+  its absolute path. DevScope's hook only POSTed telemetry, so `EnterWorktree` and
+  `claude --worktree` failed in **every repository** with the plugin enabled, not
+  just this one. `async: true` made it unrecoverable: an async hook is backgrounded
+  and its late response is validated against a reduced schema (only
+  `systemMessage`, `metrics`, `hookSpecificOutput.additionalContext`), so a printed
+  path is discarded. `WorktreeRemove` had the same shape, silently suppressing
+  worktree cleanup. The `worktree.create` / `worktree.remove` event types are gone.
+- **`PreToolUse` can return a decision again.** It was registered `async: true`,
+  which meant the `permissionDecision: "deny"` that `tool-use.sh` emits for
+  hard-block nudge mode was discarded before it could take effect — an async
+  hook's late response is validated against a reduced schema that has no
+  permission fields. `PreToolUse` is now registered without `async`, and
+  `tool-use.sh` announces `{"async": true}` on its first stdout line unless
+  `DEVSCOPE_NUDGE_MODE=hard`. Claude Code backgrounds the process on seeing that
+  line, so the default path costs the session nothing, while hard mode stays
+  synchronous and its deny is honored.
+- **Config file no longer overrides the environment.** `scripts/_helpers.sh`
+  documented "env var > config file > default" but did the opposite: it assigned
+  config values unconditionally, so `DEVSCOPE_PRIVACY=private` in the environment
+  was discarded whenever `~/.config/devscope/config` named a mode — a silent
+  privacy downgrade. The block was also skipped entirely when `DEVSCOPE_URL` was
+  set, so exporting a URL discarded the configured API key and privacy mode. The
+  config file is now always read and only fills in values the environment has not
+  set.
+
+### Added
+- Nine hook events introduced in Claude Code since this plugin was last updated:
+  | Event | Script | Event type |
+  |---|---|---|
+  | `PostToolBatch` | `tool-batch.sh` | `tool.batch` |
+  | `UserPromptExpansion` | `prompt-expansion.sh` | `prompt.expansion` |
+  | `StopFailure` | `response-failed.sh` | `response.failed` |
+  | `PostModelSwitch` | `model-switch.sh` | `model.switch` |
+  | `PermissionDenied` | `permission-denied.sh` | `permission.denied` |
+  | `TaskCreated` | `task-created.sh` | `task.created` |
+  | `CwdChanged` | `cwd-changed.sh` | `cwd.change` |
+  | `DirectoryAdded` | `directory-added.sh` | `directory.added` |
+  | `Setup` | `setup-hook.sh` | `plugin.setup` |
+- Every event payload now carries the base hook-input fields Claude Code stamps on
+  all events: `promptId` (correlates every event back to the user prompt that
+  caused it, and joins to the `prompt.id` OpenTelemetry attribute), `permissionMode`,
+  and `effortLevel`. Added to `payload`, not the envelope, so older backends keep
+  accepting events unchanged.
+- Smoke fixtures for all nine new hooks.
+- A "Hook Selection Rule" section in `CLAUDE.md` recording which events delegate a
+  job rather than report one, so this class of outage is not reintroduced.
+
+### Deliberately not registered
+- `PreModelSwitch` — gates the model switch and waits for an answer; a hook that
+  fails or never answers can block or abort a model change.
+- `MessageDisplay` — rewrites displayed assistant text and fires on every flush of
+  every message.
+- `FileChanged` — inert unless the plugin imposes absolute watch paths on the user,
+  and high-volume once it is not.
+
+### Notes for operators
+- **Deploy the backend before releasing this plugin version.** The matching
+  server-side change is in the `devscope` repo: the nine new types were added to
+  the `eventType` enum in `packages/backend/src/routes/events.ts` and to the
+  `EventType` union in `packages/shared/src/events.ts`, with dashboard rendering in
+  `packages/dashboard/src/lib/eventDisplay.ts`. Until that is live, `zValidator`
+  rejects the new types with 400, and `send-event.sh` treats 4xx as "reject and
+  drop" (deliberately — retrying a malformed event would just fill the retry
+  buffer), so each new event would be lost *and* write a
+  `[devscope] Event delivery failed (HTTP 400)` line to stderr.
+- `worktree.create` / `worktree.remove` were deliberately kept in the backend enum.
+  Plugin versions before 0.15.0 stay installed in the wild and keep sending them;
+  removing the enum members would turn their events into 400s. This plugin simply
+  stops producing them, so those rows go dormant. Historical rows are untouched.
+- No backend change is needed for `promptId` / `permissionMode` / `effortLevel`:
+  `payload` is validated as `z.record(z.unknown())`.
+- Verified against Claude Code 2.1.251.
+
 ## [0.11.1] - 2026-05-07
 
 ### Fixed

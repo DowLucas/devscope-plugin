@@ -93,7 +93,13 @@ if [ "$SUCCESS" = "true" ] && { [ "$TOOL_NAME" = "Write" ] || [ "$TOOL_NAME" = "
 fi
 
 # Extract privacy-safe subcommand from raw input (before sanitization)
-TOOL_SUBCOMMAND=$(_ds_extract_subcommand "$TOOL_NAME" "$(echo "$INPUT" | jq -c '.tool_input // {}')")
+RAW_INPUT_JSON=$(echo "$INPUT" | jq -c '.tool_input // {}')
+TOOL_SUBCOMMAND=$(_ds_extract_subcommand "$TOOL_NAME" "$RAW_INPUT_JSON")
+
+# Stable input hash so PreToolUse and PostToolUse agree on identity.
+# Hashing the raw (pre-sanitization) input keeps PreToolUse fast — it doesn't
+# need to sanitize before checking.
+TOOL_INPUT_HASH=$(_ds_tool_input_hash "$TOOL_NAME" "$RAW_INPUT_JSON")
 
 PAYLOAD=$(jq -n \
   --arg tn "$TOOL_NAME" \
@@ -105,12 +111,31 @@ PAYLOAD=$(jq -n \
   --argjson tr "${TOOL_RESULT:-null}" \
   --argjson intr "$IS_INTERRUPT" \
   --arg ts "$TOOL_SUBCOMMAND" \
+  --arg tih "$TOOL_INPUT_HASH" \
   '{toolName: $tn, success: $s, duration: $d}
    | if $em != "" then . + {errorMessage: $em} else . end
    | if $ai != "" then . + {agentId: $ai} else . end
    | if $ti != null then . + {toolInput: $ti} else . end
    | if $tr != null then . + {toolResult: $tr} else . end
    | . + {isInterrupt: $intr}
-   | if $ts != "" then . + {toolSubcommand: $ts} else . end')
+   | if $ts != "" then . + {toolSubcommand: $ts} else . end
+   | . + {toolInputHash: $tih}')
 
-echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "$EVENT_TYPE" "$PAYLOAD"
+# Send the event and capture the backend's response body so we can surface
+# soft nudges back into Claude's session via stderr (exit 2 → system message).
+RESP=$(echo "$INPUT" | DS_AWAIT_BODY=1 DS_TIMEOUT_SEC=3 "$SCRIPT_DIR/send-event.sh" "$EVENT_TYPE" "$PAYLOAD" 2>/dev/null || true)
+
+if [ "$DEVSCOPE_NUDGE_MODE" != "off" ] && [ -n "$RESP" ]; then
+  NUDGE_TYPE=$(printf '%s' "$RESP" | jq -r '.nudge.type // empty' 2>/dev/null || echo "")
+  if [ "$NUDGE_TYPE" = "soft" ]; then
+    NUDGE_MSG=$(printf '%s' "$RESP" | jq -r '.nudge.message // empty' 2>/dev/null || echo "")
+    if [ -n "$NUDGE_MSG" ]; then
+      # PostToolUse: exit 2 with stderr message → Claude Code surfaces this
+      # back to the AI as a system message.
+      printf '%s\n' "$NUDGE_MSG" >&2
+      exit 2
+    fi
+  fi
+fi
+
+exit 0

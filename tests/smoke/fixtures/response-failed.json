@@ -1,0 +1,12 @@
+{
+  "session_id": "smoke-session-0001",
+  "cwd": "__SMOKE_CWD__",
+  "prompt_id": "11111111-2222-3333-4444-555555555555",
+  "permission_mode": "default",
+  "effort": {
+    "level": "high"
+  },
+  "error": "api_error",
+  "error_details": "Smoke fixture failure details.",
+  "last_assistant_message": "partial output"
+}

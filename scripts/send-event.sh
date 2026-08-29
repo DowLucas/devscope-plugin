@@ -53,6 +53,30 @@ if [ "${DEVSCOPE_PRIVACY:-standard}" = "private" ] && [ -n "$CWD" ]; then
   fi
 fi
 
+# Base hook-input fields Claude Code now stamps on EVERY hook event
+# (CC >= 2.1.x). They cost nothing to forward and are not sensitive:
+#   prompt_id       — UUID correlating a user prompt with all subsequent events
+#                     until the next prompt. Also emitted as the `prompt.id`
+#                     OpenTelemetry attribute, so events join to OTel at prompt
+#                     grain. Absent until the first user input of the process.
+#   permission_mode — active permission mode for the session.
+#   effort.level    — effort level for the current turn, after any silent
+#                     downgrade for the selected model.
+# Added to the payload (not the envelope) so older backends keep accepting
+# events unchanged.
+_DS_PROMPT_ID=$(echo "$INPUT" | jq -r '.prompt_id // empty')
+_DS_PERM_MODE=$(echo "$INPUT" | jq -r '.permission_mode // empty')
+_DS_EFFORT=$(echo "$INPUT" | jq -r '.effort.level // empty')
+if [ -n "$_DS_PROMPT_ID" ] || [ -n "$_DS_PERM_MODE" ] || [ -n "$_DS_EFFORT" ]; then
+  PAYLOAD=$(echo "$PAYLOAD" | jq -c \
+    --arg pid "$_DS_PROMPT_ID" \
+    --arg pm "$_DS_PERM_MODE" \
+    --arg ef "$_DS_EFFORT" \
+    'if $pid != "" then . + {promptId: $pid} else . end
+     | if $pm != "" then . + {permissionMode: $pm} else . end
+     | if $ef != "" then . + {effortLevel: $ef} else . end' 2>/dev/null) || true
+fi
+
 EVENT_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "evt-$(_ds_now_ns)")
 
 TIMESTAMP=$(_ds_timestamp)
@@ -101,23 +125,26 @@ if [ -n "${DEVSCOPE_API_KEY:-}" ]; then
   esac
 fi
 
-# DEV-74: on `session.start` we need the response body so we can pin the
-# per-org `salt` and `salt_version` returned by DEV-76. For all other event
-# types we stay on the original `-o /dev/null` path to keep the hot loop tight.
+# Response body is needed in two cases:
+#   1. `session.start` — DEV-74 pins the per-org `salt`/`salt_version` (DEV-76).
+#   2. Any caller that sets DS_AWAIT_BODY=1 and wants the JSON back on stdout.
+# Everything else stays on the `-o /dev/null` path to keep the hot loop tight.
+TIMEOUT="${DS_TIMEOUT_SEC:-5}"
+
 _DS_BODY_FILE=""
-if [ "$EVENT_TYPE" = "session.start" ]; then
-  _DS_BODY_FILE=$(mktemp 2>/dev/null || echo "/tmp/ds-session-start-$$.json")
+if [ "$EVENT_TYPE" = "session.start" ] || [ "${DS_AWAIT_BODY:-0}" = "1" ]; then
+  _DS_BODY_FILE=$(mktemp 2>/dev/null || echo "/tmp/ds-event-$$.json")
   CURL_ARGS=(-s -X POST "${DEVSCOPE_URL}/api/events"
     -H "Content-Type: application/json"
     -d "$EVENT"
-    --max-time 5
+    --max-time "$TIMEOUT"
     -w '%{http_code}'
     -o "$_DS_BODY_FILE")
 else
   CURL_ARGS=(-s -X POST "${DEVSCOPE_URL}/api/events"
     -H "Content-Type: application/json"
     -d "$EVENT"
-    --max-time 5
+    --max-time "$TIMEOUT"
     -w '%{http_code}'
     -o /dev/null)
 fi
@@ -154,7 +181,6 @@ if [ "$EVENT_TYPE" = "session.start" ] && [ -f "$_DS_BODY_FILE" ]; then
       fi
       ;;
   esac
-  rm -f "$_DS_BODY_FILE" 2>/dev/null || true
 fi
 
 case "$HTTP_CODE" in
@@ -176,4 +202,14 @@ case "$HTTP_CODE" in
     ;;
 esac
 
+
+# Only print the response body to stdout when the caller explicitly asked
+# (DS_AWAIT_BODY=1). Other callers feed their stdout straight to Claude Code's
+# hook protocol, so leaking JSON there would corrupt the hook response.
+if [ "${DS_AWAIT_BODY:-0}" = "1" ] && [ -f "$_DS_BODY_FILE" ]; then
+  cat "$_DS_BODY_FILE"
+fi
+if [ -n "$_DS_BODY_FILE" ]; then
+  rm -f "$_DS_BODY_FILE" 2>/dev/null || true
+fi
 exit 0

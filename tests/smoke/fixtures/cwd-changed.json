@@ -1,0 +1,11 @@
+{
+  "session_id": "smoke-session-0001",
+  "cwd": "__SMOKE_CWD__",
+  "prompt_id": "11111111-2222-3333-4444-555555555555",
+  "permission_mode": "default",
+  "effort": {
+    "level": "high"
+  },
+  "old_cwd": "/tmp/old-project",
+  "new_cwd": "/tmp/new-project"
+}
