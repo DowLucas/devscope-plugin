@@ -57,8 +57,16 @@ job itself — merely being registered claims the role, whether or not the hook 
 - `WorktreeCreate` / `WorktreeRemove` — Claude Code branches on
   `hasWorktreeCreateHook()`; a registered hook must create the directory and echo
   its absolute path, or worktree isolation fails for every repo. **Never register.**
-- `PreModelSwitch` — gates the model switch and waits for an answer; a hook that
-  fails or never answers can block or abort the switch. **Never register.**
+- `PreModelSwitch` / `PostModelSwitch` — **cannot be registered at all.** Claude
+  Code's internal runtime event list (33 events) is larger than the set the
+  hooks-config schema accepts (31); these two fire internally but are not
+  configurable from `hooks.json`. Registering one fails schema validation for the
+  **whole file**, so every hook in the plugin stops loading — this shipped in
+  0.15.0 and disabled the plugin. `PreModelSwitch` would also be unsafe on its own
+  merits: it gates the model switch and waits for an answer.
+  `tests/check-hooks-consistency.sh` enforces the accepted set; note that
+  `claude plugin validate` does **not** check `hooks.json` in this repo, because
+  it validates the marketplace manifest instead.
 - `MessageDisplay` — rewrites displayed assistant text and fires on every flush of
   every message. **Never register.**
 

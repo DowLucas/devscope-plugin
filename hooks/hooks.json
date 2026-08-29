@@ -245,17 +245,6 @@
         ]
       }
     ],
-    "PostModelSwitch": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/model-switch.sh",
-            "async": true
-          }
-        ]
-      }
-    ],
     "PermissionDenied": [
       {
         "hooks": [

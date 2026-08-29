@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.1] - 2026-08-29
+
+### Fixed
+- **`hooks.json` failed to load in its entirety on 0.15.0, disabling every hook in
+  the plugin.** 0.15.0 registered `PostModelSwitch`, which Claude Code's
+  hooks-config schema rejects:
+
+      Failed to load hooks from .../0.15.0/hooks/hooks.json:
+      "path": ["hooks", "PostModelSwitch"], "message": "Invalid key in record"
+
+  Claude Code's *internal* runtime event list (33 entries) is not the same as the
+  set of events registrable from `hooks.json`/`settings.json` (31). `PreModelSwitch`
+  and `PostModelSwitch` fire internally but cannot be configured. 0.15.0 was built
+  from the runtime list, so it registered one key the schema does not accept — and
+  because the schema validates the whole record, a single bad key rejects the file
+  and no hook loads at all. Upgrading from 0.15.0 restores all hooks.
+
+  `scripts/model-switch.sh`, its smoke fixture, and the backend's `model.switch`
+  payload schema are kept on disk so the event can be wired the day config
+  registration is allowed; it is simply not registered. No `model.switch` events
+  were ever emitted, since 0.15.0's hooks never loaded.
+
+### Added
+- `tests/check-hooks-consistency.sh` now validates every event key in `hooks.json`
+  against the set the hooks-config schema accepts, and fails with an explicit note
+  that an unsupported key disables the entire plugin. `claude plugin validate` does
+  not catch this — in a repo that is also a marketplace it validates the
+  marketplace manifest, not `hooks.json`.
+
 ## [0.15.0] - 2026-08-29
 
 ### Fixed
