@@ -85,16 +85,24 @@ for fixture in "${fixtures[@]}"; do
     exit 1
   fi
   count=$((count + 1))
-  # Better-auth's apiKey plugin rate-limits at 15 verifyApiKey calls per
-  # 1s window per key. A tight burst tips over and the backend returns 401
-  # with "Rate limit exceeded".
+  # Pace the replay under better-auth's apiKey rate limit (`maxRequests: 15`,
+  # `timeWindow: 1000` in the backend's auth.ts). Exceeding it returns 401
+  # "Rate limit exceeded", which is indistinguishable here from a real auth
+  # failure.
   #
-  # This was 100ms, which was sized for 7 fixtures. Plugin 0.15.0 added nine
-  # more (16 total), and at 100ms the burst crossed the 15/s ceiling — the
-  # run failed with 401s on the tail of the list rather than on any one
-  # fixture. 250ms holds us near 4 req/s, which leaves headroom for the
-  # health probe and further fixtures without re-tuning.
-  sleep 0.25
+  # The delay was 100ms, sized when there were 7 fixtures. Plugin 0.15.0 took
+  # that to 16 — past the 15-per-window budget — and the run started failing
+  # with 401s. Note the budget is what matters, not the rate: at 100ms five
+  # calls failed, and raising the gap to 250ms (~4 req/s, far under 15/s) still
+  # left two failing. The counter refills on an idle gap rather than draining
+  # at a steady rate, so the fix is to make each request its own window rather
+  # than to spread the burst.
+  #
+  # Sleeping just over the 1s window does that, and holds regardless of how
+  # many fixtures are added later. It costs ~16s of wall clock in CI, which is
+  # a fair trade for a lane that otherwise fails on a number that silently
+  # depends on the fixture count.
+  sleep 1.1
 done
 
 # 4. Inspect stderr for delivery failures.
