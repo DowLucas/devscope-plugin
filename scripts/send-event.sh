@@ -190,6 +190,14 @@ case "$HTTP_CODE" in
       ( "$SCRIPT_DIR/drain-queue.sh" >/dev/null 2>&1 & ) >/dev/null 2>&1
     fi
     ;;
+  429)
+    # Rate limited (per-IP ingest limit or per-API-key limit). The event is
+    # fine, the timing was not — buffer it like an outage. Must precede 4*:
+    # a queue replay after a backend restart bursts past the limit, and
+    # dropping here silently lost those events.
+    echo "[devscope] Event delivery rate limited (HTTP 429) by ${DEVSCOPE_URL}; queued for retry" >&2
+    printf '%s' "$EVENT" | _ds_queue_enqueue "$EVENT_ID" || true
+    ;;
   4*)
     # Backend rejected this specific event — log and drop. Don't queue:
     # retrying a malformed event would just fill the buffer.

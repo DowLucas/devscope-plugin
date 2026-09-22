@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.2] - 2026-09-22
+
+### Fixed
+- **Rate-limited events were dropped instead of retried.** `send-event.sh` and
+  `drain-queue.sh` treated every 4xx as a permanently bad event and discarded it,
+  including HTTP 429. The backend returns 429 from its per-IP ingest limit and
+  (since devscope `f797aa2`) from the per-API-key limit, which previously surfaced
+  as a 401. Replaying the outage queue after a backend restart is exactly what
+  trips those limits, so the events buffered during the outage were the ones lost.
+  A 429 is now buffered like a 5xx, and a drain that hits one keeps the file,
+  backs off and stops the batch. Other 4xx are still dropped. Covered by phases 6
+  and 7 of `tests/queue/run.sh`.
+
 ## [0.15.1] - 2026-08-29
 
 ### Fixed

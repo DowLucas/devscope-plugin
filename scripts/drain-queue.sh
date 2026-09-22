@@ -61,6 +61,14 @@ while IFS= read -r f; do
       rm -f "$f" 2>/dev/null
       sent=$((sent + 1))
       ;;
+    429)
+      # Rate limited: keep the file, back off and stop the batch. Replaying a
+      # backlog is exactly what trips the limit, so pushing on would only
+      # turn the rest of the queue into more 429s.
+      prev=$(_ds_queue_backoff_delay)
+      _ds_queue_backoff_bump "$prev"
+      exit 0
+      ;;
     4*)
       # Malformed / rejected — retrying won't help. Drop with a warning.
       echo "[devscope] Dropping queued event after HTTP $http: $(basename "$f")" >&2

@@ -24,7 +24,7 @@ fail() { printf '[queue-test] FAIL: %s\n' "$*" >&2; exit 1; }
 WORK="$(mktemp -d)"
 QUEUE_DIR="$WORK/queue"
 SERVER_LOG="$WORK/server.log"
-SERVER_STATE="$WORK/state"   # contents: "down" | "up"
+SERVER_STATE="$WORK/state"   # contents: "down" | "up" | "limited" | "reject"
 SERVER_HITS="$WORK/hits"     # one line per accepted POST
 echo "down" >"$SERVER_STATE"
 : >"$SERVER_HITS"
@@ -67,6 +67,15 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"ok":true}')
+        elif self._state() == "limited":
+            self.send_response(429)
+            self.send_header("Retry-After", "1")
+            self.end_headers()
+            self.wfile.write(b'{"error":"Too many requests"}')
+        elif self._state() == "reject":
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b'{"error":"bad event"}')
         else:
             self.send_response(503)
             self.end_headers()
@@ -182,5 +191,38 @@ done
 got=$(queue_count)
 [ "$got" = "4" ] || fail "cap=4 expected 4 queued, got $got"
 log "Phase 5 OK: queue capped at $got"
+
+unset DEVSCOPE_QUEUE_MAX
+rm -f "$QUEUE_DIR"/q_*.json "$QUEUE_DIR/.backoff" "$QUEUE_DIR/.backoff_delay"
+
+# --- Phase 6: 429 is transient, not a rejection --------------------------
+# A rate-limited event must be buffered and survive a rate-limited drain.
+# Before this, 429 fell into the 4xx "drop" branch and the event was lost.
+log "Phase 6: rate limited (429) → queued, kept through a limited drain"
+: >"$SERVER_HITS"
+echo "limited" >"$SERVER_STATE"
+for i in 1 2 3; do
+  printf '%s' "$(mk_input "rl-$i")" | "$SCRIPTS/send-event.sh" "test.rl" '{"i":'$i'}' \
+    >/dev/null 2>>"$SERVER_LOG" || true
+done
+[ "$(queue_count)" = "3" ] || fail "expected 3 queued after 429, got $(queue_count)"
+"$SCRIPTS/drain-queue.sh"
+[ "$(queue_count)" = "3" ] || fail "429 during drain dropped events: $(queue_count) left"
+[ -f "$QUEUE_DIR/.backoff" ] || fail "429 during drain did not set backoff"
+echo "up" >"$SERVER_STATE"
+rm -f "$QUEUE_DIR/.backoff" "$QUEUE_DIR/.backoff_delay"
+"$SCRIPTS/drain-queue.sh"
+[ "$(queue_count)" = "0" ] || fail "queue not empty after limit lifted, got $(queue_count)"
+hits=$(wc -l <"$SERVER_HITS" | tr -d ' ')
+[ "$hits" = "3" ] || fail "expected 3 hits after limit lifted, got $hits"
+log "Phase 6 OK: rate-limited events delivered once the limit lifted"
+
+# --- Phase 7: other 4xx still drop (regression guard) ---------------------
+log "Phase 7: 400 → dropped, not queued"
+echo "reject" >"$SERVER_STATE"
+printf '%s' "$(mk_input "bad-1")" | "$SCRIPTS/send-event.sh" "test.bad" '{"i":1}' \
+  >/dev/null 2>>"$SERVER_LOG" || true
+[ "$(queue_count)" = "0" ] || fail "400 should drop, but $(queue_count) queued"
+log "Phase 7 OK: malformed events are still dropped"
 
 log "ALL PHASES PASSED"
