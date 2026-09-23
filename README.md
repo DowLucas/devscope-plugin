@@ -90,6 +90,22 @@ Or run `/devscope:setup` in Claude Code to reconfigure interactively.
 
 > **Backwards compatibility**: Old values `redacted` and `full` are automatically mapped to `private` and `open` respectively — no config changes needed.
 
+## Next-step hints
+
+DevScope noticed that opening a pull request is the strongest signal that a code review comes next. After Claude opens a PR with `gh pr create`, the plugin shows you one line:
+
+```
+DevScope: PR opened. Review it next with /code-review?
+```
+
+It is only a suggestion, shown to you and not to Claude, so nothing runs on its own. It appears once per PR, uses no network, and adds a few milliseconds to Bash calls.
+
+```bash
+# In ~/.config/devscope/config (environment variables take precedence)
+DEVSCOPE_HINTS=off                   # turn hints off (default: on)
+DEVSCOPE_HINT_AFTER_PR=/review-pr    # suggest a different command (default: /code-review)
+```
+
 ## What's Tracked
 
 | Event | Data Sent |
@@ -102,7 +118,7 @@ Or run `/devscope:setup` in Claude Code to reconfigure interactively.
 | Task completed | Task details |
 | And more... | Notifications, compaction, config changes |
 
-All hooks are **async and non-blocking** — they won't slow down your Claude Code sessions.
+All tracking hooks are **async and non-blocking**, so they won't slow down your Claude Code sessions. The one exception is the next-step hint, which has to be synchronous to show its message; it only reacts to `gh pr create` and returns in a few milliseconds otherwise.
 
 ## Platform Support
 

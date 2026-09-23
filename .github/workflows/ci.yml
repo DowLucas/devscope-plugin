@@ -23,7 +23,8 @@ jobs:
             install.sh \
             tests/check-hooks-consistency.sh \
             tests/smoke/run.sh \
-            tests/queue/run.sh
+            tests/queue/run.sh \
+            tests/hints/run.sh
 
   hooks-consistency:
     name: hooks.json consistency
@@ -40,6 +41,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run queue test (no backend required — uses bundled stub server)
         run: bash tests/queue/run.sh
+
+  hints:
+    name: next-step hint test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run hint hook tests (no backend required)
+        run: bash tests/hints/run.sh
 
   smoke:
     name: smoke POST against fresh backend

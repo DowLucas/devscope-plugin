@@ -20,6 +20,8 @@ if [ -f "$_DS_CONFIG" ]; then
       DEVSCOPE_URL)     DEVSCOPE_URL="${DEVSCOPE_URL:-$value}" ;;
       DEVSCOPE_API_KEY) DEVSCOPE_API_KEY="${DEVSCOPE_API_KEY:-$value}" ;;
       DEVSCOPE_PRIVACY) DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-$value}" ;;
+      DEVSCOPE_HINTS)   DEVSCOPE_HINTS="${DEVSCOPE_HINTS:-$value}" ;;
+      DEVSCOPE_HINT_AFTER_PR) DEVSCOPE_HINT_AFTER_PR="${DEVSCOPE_HINT_AFTER_PR:-$value}" ;;
     esac
   done < <(grep -v '^#' "$_DS_CONFIG" | grep -v '^$')
 fi
@@ -203,6 +205,16 @@ DEVSCOPE_NUDGE_MODE="${DEVSCOPE_NUDGE_MODE:-soft}"
 
 # Pre-flight similar-prompts injection on UserPromptSubmit: "on" (default) | "off"
 DEVSCOPE_PREFLIGHT="${DEVSCOPE_PREFLIGHT:-on}"
+
+# Next-step hints shown to the user (never to Claude): "on" (default) | "off"
+DEVSCOPE_HINTS="${DEVSCOPE_HINTS:-on}"
+# Command suggested after a PR is opened. Must look like /name; anything else
+# falls back to the default so arbitrary text can't be injected into the hint.
+DEVSCOPE_HINT_AFTER_PR="${DEVSCOPE_HINT_AFTER_PR:-/code-review}"
+case "$DEVSCOPE_HINT_AFTER_PR" in
+  /*) printf '%s' "$DEVSCOPE_HINT_AFTER_PR" | grep -Eq '^/[A-Za-z0-9:_-]{1,60}$' || DEVSCOPE_HINT_AFTER_PR="/code-review" ;;
+  *) DEVSCOPE_HINT_AFTER_PR="/code-review" ;;
+esac
 
 # Compute a stable hash of (tool_name, raw_tool_input_json). Used by the
 # proactive layer so PreToolUse and PostToolUse agree on identity.
