@@ -3,8 +3,9 @@
 #
 # PostToolUse, Bash only. DevScope data showed that opening a PR is the
 # strongest precursor of running a review (roughly 1 in 6 PRs, 16x the base
-# rate), but auto-invocation would be wrong most of the time, so this only
-# shows the user a one-line hint; Claude is not told and runs nothing.
+# rate), but auto-invocation would be wrong most of the time, so nothing runs
+# on its own. DEVSCOPE_HINTS=on shows the user a one-line hint; =claude also
+# tells Claude, which is asked to offer the review, never to run it unasked.
 #
 # Synchronous by necessity: Claude Code ignores the output of async hooks.
 # It is local (no network), shown once per PR per session, and silent on
@@ -36,5 +37,12 @@ grep -Fxq "$URL" "$SEEN" 2>/dev/null && exit 0
 printf '%s\n' "$URL" >> "$SEEN" 2>/dev/null || true
 
 NEXT="${DEVSCOPE_HINT_AFTER_PR:-/code-review}"
-jq -n --arg m "DevScope: PR opened. Review it next with ${NEXT}?" '{systemMessage: $m}'
+MSG="DevScope: PR opened. Review it next with ${NEXT}?"
+if [ "${DEVSCOPE_HINTS:-on}" = "claude" ]; then
+  CTX="DevScope: the user just opened a pull request (${URL}). They often run ${NEXT} after opening one. Offer to run ${NEXT} in one short sentence; do not run it unless the user agrees."
+  jq -n --arg m "$MSG" --arg c "$CTX" \
+    '{systemMessage: $m, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $c}}'
+else
+  jq -n --arg m "$MSG" '{systemMessage: $m}'
+fi
 exit 0

@@ -98,11 +98,13 @@ DevScope noticed that opening a pull request is the strongest signal that a code
 DevScope: PR opened. Review it next with /code-review?
 ```
 
-It is only a suggestion, shown to you and not to Claude, so nothing runs on its own. It appears once per PR, uses no network, and adds a few milliseconds to Bash calls.
+By default it is only shown to you. With `DEVSCOPE_HINTS=claude`, Claude sees it too and offers the review at the end of its reply ("Want me to run `/code-review` on it?"). Either way nothing runs until you agree. It appears once per PR, uses no network, and adds a few milliseconds to Bash calls.
 
 ```bash
 # In ~/.config/devscope/config (environment variables take precedence)
-DEVSCOPE_HINTS=off                   # turn hints off (default: on)
+DEVSCOPE_HINTS=on                    # default: shown to you only
+DEVSCOPE_HINTS=claude                # also tell Claude, which offers the next step
+DEVSCOPE_HINTS=off                   # no hints
 DEVSCOPE_HINT_AFTER_PR=/review-pr    # suggest a different command (default: /code-review)
 ```
 

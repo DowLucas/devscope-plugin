@@ -42,6 +42,15 @@ check "env beats config file" "/code-review" "$(payload "gh pr create" "https://
 rm "$XDG_CONFIG_HOME/devscope/config"
 check "custom next command" "/review-pr" "$(payload "gh pr create" "https://github.com/acme/app/pull/12" false s9 | DEVSCOPE_HINT_AFTER_PR=/review-pr "$HOOK")"
 check "unsafe custom command falls back" "/code-review?" "$(payload "gh pr create" "https://github.com/acme/app/pull/13" false s10 | DEVSCOPE_HINT_AFTER_PR='/x; rm -rf ~' "$HOOK")"
+out=$(payload "gh pr create" "https://github.com/acme/app/pull/14" false s11 | "$HOOK")
+check "default mode does not tell Claude" "null" "$(printf '%s' "$out" | jq -c '.hookSpecificOutput')"
+out=$(payload "gh pr create" "https://github.com/acme/app/pull/15" false s12 | DEVSCOPE_HINTS=claude "$HOOK")
+check "claude mode still shows the user" "/code-review" "$(printf '%s' "$out" | jq -r '.systemMessage')"
+check "claude mode tells Claude, with the PR" "https://github.com/acme/app/pull/15" "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
+check "claude mode asks Claude to offer, not run" "do not run it unless the user agrees" "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')"
+check "claude mode sets the hook event name" "PostToolUse" "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.hookEventName')"
+check "user mode is user-only" "null" "$(payload "gh pr create" "https://github.com/acme/app/pull/16" false s13 | DEVSCOPE_HINTS=user "$HOOK" | jq -c '.hookSpecificOutput')"
+check "unknown mode falls back to user-only" "null" "$(payload "gh pr create" "https://github.com/acme/app/pull/17" false s14 | DEVSCOPE_HINTS=loud "$HOOK" | jq -c '.hookSpecificOutput')"
 check "garbage stdin is silent" EMPTY "$(printf 'not json' | "$HOOK")"
 check "empty stdin is silent" EMPTY "$(printf '' | "$HOOK")"
 
