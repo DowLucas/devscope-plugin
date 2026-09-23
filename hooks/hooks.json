@@ -54,6 +54,16 @@
             "async": true
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/skill-hint.sh",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUseFailure": [

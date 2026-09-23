@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.0] - 2026-09-23
+
+### Added
+- **Next-step hint after opening a PR.** When a Bash call runs `gh pr create` and
+  prints the new PR's URL, `scripts/skill-hint.sh` shows the user one line:
+  "DevScope: PR opened. Review it next with /code-review?". DevScope data showed
+  that opening a PR is the strongest precursor of a code review (about 1 in 6
+  PRs, 16x the base rate) but too weak to invoke anything automatically, so this
+  is a suggestion to the user only; Claude is not told and nothing runs. Shown
+  once per PR per session, no network, silent on any error. It is the plugin's
+  only synchronous hook (Claude Code ignores async hook output) and is matched
+  to Bash alone; the non-PR path averages under 10 ms.
+- `DEVSCOPE_HINTS` (`on`/`off`, default `on`) and `DEVSCOPE_HINT_AFTER_PR`
+  (default `/code-review`; must look like `/name`, anything else falls back),
+  read from the environment or `~/.config/devscope/config`.
+- `tests/hints/run.sh`: 17 checks, including dedupe, config precedence, unsafe
+  command values and the latency of the common path.
+
 ## [0.15.2] - 2026-09-22
 
 ### Fixed
