@@ -206,8 +206,13 @@ DEVSCOPE_NUDGE_MODE="${DEVSCOPE_NUDGE_MODE:-soft}"
 # Pre-flight similar-prompts injection on UserPromptSubmit: "on" (default) | "off"
 DEVSCOPE_PREFLIGHT="${DEVSCOPE_PREFLIGHT:-on}"
 
-# Next-step hints shown to the user (never to Claude): "on" (default) | "off"
+# Next-step hints: "on"/"user" (default, shown to the user only) | "claude"
+# (also told to Claude, which offers the step but never runs it unasked) | "off"
 DEVSCOPE_HINTS="${DEVSCOPE_HINTS:-on}"
+case "$DEVSCOPE_HINTS" in
+  on|user|claude|off) ;;
+  *) DEVSCOPE_HINTS="on" ;;
+esac
 # Command suggested after a PR is opened. Must look like /name; anything else
 # falls back to the default so arbitrary text can't be injected into the hint.
 DEVSCOPE_HINT_AFTER_PR="${DEVSCOPE_HINT_AFTER_PR:-/code-review}"

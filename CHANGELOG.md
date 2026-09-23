@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.0] - 2026-09-23
+
+### Added
+- **`DEVSCOPE_HINTS=claude`**: the PR hint is also passed to Claude as
+  `additionalContext`, asking it to offer the next step in one sentence and not
+  to run it unless the user agrees. Verified live: Claude ended its reply with
+  "Want me to run `/code-review` on it?" and made no further tool calls. The
+  default (`on`, alias `user`) is unchanged and user-only; unknown values fall
+  back to it. `tests/hints/run.sh` grows to 24 checks.
+
 ## [0.16.0] - 2026-09-23
 
 ### Added
