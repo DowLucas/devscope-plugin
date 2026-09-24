@@ -21,6 +21,7 @@ if [ -f "$_DS_CONFIG" ]; then
       DEVSCOPE_API_KEY) DEVSCOPE_API_KEY="${DEVSCOPE_API_KEY:-$value}" ;;
       DEVSCOPE_PRIVACY) DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-$value}" ;;
       DEVSCOPE_HINTS)   DEVSCOPE_HINTS="${DEVSCOPE_HINTS:-$value}" ;;
+      DEVSCOPE_PREFLIGHT) DEVSCOPE_PREFLIGHT="${DEVSCOPE_PREFLIGHT:-$value}" ;;
       DEVSCOPE_HINT_AFTER_PR) DEVSCOPE_HINT_AFTER_PR="${DEVSCOPE_HINT_AFTER_PR:-$value}" ;;
     esac
   done < <(grep -v '^#' "$_DS_CONFIG" | grep -v '^$')
@@ -203,7 +204,7 @@ DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-standard}"
 #   hard — also enable PreToolUse hard-block on identical-call retry loops
 DEVSCOPE_NUDGE_MODE="${DEVSCOPE_NUDGE_MODE:-soft}"
 
-# Pre-flight similar-prompts injection on UserPromptSubmit: "on" (default) | "off"
+# "You've asked this before" recall on UserPromptSubmit (prompt-recall.sh): "on" (default) | "off"
 DEVSCOPE_PREFLIGHT="${DEVSCOPE_PREFLIGHT:-on}"
 
 # Next-step hints: "on"/"user" (default, shown to the user only) | "claude"
