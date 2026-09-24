@@ -90,6 +90,23 @@ Or run `/devscope:setup` in Claude Code to reconfigure interactively.
 
 > **Backwards compatibility**: Old values `redacted` and `full` are automatically mapped to `private` and `open` respectively — no config changes needed.
 
+## "You've asked this before"
+
+When you send a prompt that closely matches one from an earlier session of yours, Claude gets a short note on how it went last time: tool calls, failures, and how it ended. You see a one-line notice:
+
+```
+DevScope: you've asked this before (2026-09-12, 2026-09-03). Claude has the notes.
+```
+
+It only fires on strong matches (similarity 0.9 or higher, 4+ words, from your own sessions), so most prompts get nothing. From the third separate day, Claude may suggest turning the ask into a skill. It waits at most 2 seconds and never runs in `private` mode.
+
+```bash
+# In ~/.config/devscope/config
+DEVSCOPE_PREFLIGHT=off   # turn it off (default: on)
+```
+
+Requires a DevScope server with semantic retrieval enabled.
+
 ## Next-step hints
 
 DevScope noticed that opening a pull request is the strongest signal that a code review comes next. After Claude opens a PR with `gh pr create`, the plugin shows you one line:

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.0] - 2026-09-24
+
+### Added
+- **"You've asked this before."** `scripts/prompt-recall.sh`, a synchronous
+  UserPromptSubmit hook, asks the server's `/api/similar/preflight` whether the
+  prompt nearly repeats one from the user's own earlier sessions. On a strong
+  match, Claude gets a note with how it went (tool calls, failures, how it ended)
+  as `additionalContext`, and the user sees a one-line notice. 4+ word prompts
+  only (checked locally, so "yes" costs no round trip), 2 s cap, silent on any
+  error, off with `DEVSCOPE_PREFLIGHT=off` (now also read from the config file),
+  never in private mode. `tests/recall/run.sh` (15 checks, stub server) in CI.
+
+### Fixed
+- **The similar-prompts pre-flight never reached Claude.** It lived in
+  `prompt-submit.sh`, which is registered async, and Claude Code ignores async
+  hook output. Removed from there; replaced by the recall hook above.
+
 ## [0.17.0] - 2026-09-23
 
 ### Added

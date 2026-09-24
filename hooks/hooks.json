@@ -31,6 +31,15 @@
             "async": true
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/prompt-recall.sh",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [
