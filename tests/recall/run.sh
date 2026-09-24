@@ -18,6 +18,10 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("content-length", 0)))
+        if self.headers.get("x-requested-with") != "devscope-cli":
+            # Same as the backend's CSRF middleware for API-key POSTs.
+            self.send_response(403); self.send_header("content-type", "application/json"); self.end_headers()
+            self.wfile.write(b'{"error":"Missing x-requested-with header"}'); return
         open(hits_f, "a").write("x")
         open(last_f, "w").write(json.dumps({"path": self.path, "key": self.headers.get("x-api-key"), "body": json.loads(body)}))
         mode = open(mode_f).read().strip()
