@@ -100,3 +100,14 @@ PAYLOAD=$(jq -n \
    | if ($claudeMd | length) > 0 then . + {claudeMdFiles: $claudeMd} else . end')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "session.start" "$PAYLOAD"
+
+# Cache the user's learned skill sequences for next-skill hints (skill-hint.sh).
+# Refreshed at most every 6 hours; replaced only by a valid response.
+CHAINS="${GC_CACHE_DIR}/skill-chains.json"
+if [ "$DEVSCOPE_PRIVACY" != "private" ] && [ "${DEVSCOPE_HINTS:-on}" != "off" ] \
+   && { [ ! -f "$CHAINS" ] || [ -n "$(find "$CHAINS" -mmin +360 2>/dev/null)" ]; }; then
+  _chains=$(_ds_api GET /api/similar/skill-chains "" 3 || true)
+  if printf '%s' "$_chains" | jq -e '.chains | type == "array"' >/dev/null 2>&1; then
+    printf '%s' "$_chains" > "${CHAINS}.tmp" && mv "${CHAINS}.tmp" "$CHAINS"
+  fi
+fi

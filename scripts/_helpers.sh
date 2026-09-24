@@ -22,6 +22,7 @@ if [ -f "$_DS_CONFIG" ]; then
       DEVSCOPE_PRIVACY) DEVSCOPE_PRIVACY="${DEVSCOPE_PRIVACY:-$value}" ;;
       DEVSCOPE_HINTS)   DEVSCOPE_HINTS="${DEVSCOPE_HINTS:-$value}" ;;
       DEVSCOPE_PREFLIGHT) DEVSCOPE_PREFLIGHT="${DEVSCOPE_PREFLIGHT:-$value}" ;;
+      DEVSCOPE_ERROR_RECALL) DEVSCOPE_ERROR_RECALL="${DEVSCOPE_ERROR_RECALL:-$value}" ;;
       DEVSCOPE_HINT_AFTER_PR) DEVSCOPE_HINT_AFTER_PR="${DEVSCOPE_HINT_AFTER_PR:-$value}" ;;
     esac
   done < <(grep -v '^#' "$_DS_CONFIG" | grep -v '^$')
@@ -206,6 +207,20 @@ DEVSCOPE_NUDGE_MODE="${DEVSCOPE_NUDGE_MODE:-soft}"
 
 # "You've asked this before" recall on UserPromptSubmit (prompt-recall.sh): "on" (default) | "off"
 DEVSCOPE_PREFLIGHT="${DEVSCOPE_PREFLIGHT:-on}"
+
+# "This error came up before" recall on PostToolUseFailure (error-recall.sh): "on" (default) | "off"
+DEVSCOPE_ERROR_RECALL="${DEVSCOPE_ERROR_RECALL:-on}"
+
+# Call the DevScope API from a synchronous hook and print the response body.
+# The API key goes through curl's config on stdin (kept off the process
+# list), the CSRF header is always set, and a short timeout keeps the hook
+# from stalling the session. Non-2xx responses fail.
+_ds_api() {  # method path [json-body] [max-seconds]
+  local cfg="" args=(-sf -X "$1" "${DEVSCOPE_URL}$2" -H "x-requested-with: devscope-cli" --max-time "${4:-2}")
+  [ -n "${DEVSCOPE_API_KEY:-}" ] && cfg="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
+  [ -n "${3:-}" ] && args+=(-H "Content-Type: application/json" -d "$3")
+  printf '%s' "$cfg" | curl --config - "${args[@]}" 2>/dev/null
+}
 
 # Next-step hints: "on"/"user" (default, shown to the user only) | "claude"
 # (also told to Claude, which offers the step but never runs it unasked) | "off"

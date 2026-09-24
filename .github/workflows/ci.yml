@@ -25,7 +25,9 @@ jobs:
             tests/smoke/run.sh \
             tests/queue/run.sh \
             tests/hints/run.sh \
-            tests/recall/run.sh
+            tests/recall/run.sh \
+            tests/errors/run.sh \
+            tests/lib/stub.sh
 
   hooks-consistency:
     name: hooks.json consistency
@@ -58,6 +60,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run prompt recall hook tests (stub server, no backend required)
         run: bash tests/recall/run.sh
+
+  errors:
+    name: error recall test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run error recall hook tests (stub server, no backend required)
+        run: bash tests/errors/run.sh
 
   smoke:
     name: smoke POST against fresh backend

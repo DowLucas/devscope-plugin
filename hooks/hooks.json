@@ -65,7 +65,7 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Skill",
         "hooks": [
           {
             "type": "command",
@@ -83,6 +83,16 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/tool-complete.sh",
             "async": true
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/error-recall.sh",
+            "timeout": 5
           }
         ]
       }

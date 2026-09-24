@@ -107,6 +107,23 @@ DEVSCOPE_PREFLIGHT=off   # turn it off (default: on)
 
 Requires a DevScope server with semantic retrieval enabled.
 
+## "You've hit this error before"
+
+When a tool call fails with an error close to one from an earlier session of yours, Claude gets the past occurrences: whether the same tool succeeded soon after, and how Claude's reply ended that time. That is often the fix. You see one line:
+
+```
+DevScope: you've hit this error before (2x, 1 resolved). Claude has the notes.
+```
+
+Paths, ids and long numbers are masked before matching, so the same failure in another file or run still matches. It asks once per distinct error per session (a retry loop costs one lookup), waits at most 2 seconds, and never runs in `private` mode.
+
+```bash
+# In ~/.config/devscope/config
+DEVSCOPE_ERROR_RECALL=off   # turn it off (default: on)
+```
+
+Requires a DevScope server with semantic retrieval enabled.
+
 ## Next-step hints
 
 DevScope noticed that opening a pull request is the strongest signal that a code review comes next. After Claude opens a PR with `gh pr create`, the plugin shows you one line:
@@ -115,7 +132,13 @@ DevScope noticed that opening a pull request is the strongest signal that a code
 DevScope: PR opened. Review it next with /code-review?
 ```
 
-By default it is only shown to you. With `DEVSCOPE_HINTS=claude`, Claude sees it too and offers the review at the end of its reply ("Want me to run `/code-review` on it?"). Either way nothing runs until you agree. It appears once per PR, uses no network, and adds a few milliseconds to Bash calls.
+The same goes for skills: DevScope learns which skill you usually run after another (from your own history: seen 3+ times, and at least a quarter of the time) and hints it after the first one runs:
+
+```
+DevScope: after /ship you usually run /code-review next.
+```
+
+By default hints are only shown to you. With `DEVSCOPE_HINTS=claude`, Claude sees them too and offers the step at the end of its reply ("Want me to run `/code-review` on it?"). Either way nothing runs until you agree. Each hint appears once per PR or skill per session and uses no network on the tool call: your skill sequences are fetched at session start (at most every 6 hours) and cached in `~/.cache/devscope/skill-chains.json`.
 
 ```bash
 # In ~/.config/devscope/config (environment variables take precedence)

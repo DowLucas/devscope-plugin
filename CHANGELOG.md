@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.19.0] - 2026-09-24
+
+### Added
+- **"You've hit this error before."** `scripts/error-recall.sh`, a synchronous
+  PostToolUseFailure hook, sends the failed tool's error to the server's
+  `/api/similar/error`. On a close match from the user's own earlier sessions,
+  Claude gets whether it was resolved and how that turn ended, as
+  `additionalContext`; the user sees a one-line notice. Once per distinct
+  error per session, 20+ char errors only, interrupts skipped, 2 s cap, silent
+  on any error, off with `DEVSCOPE_ERROR_RECALL=off`, never in private mode.
+  `tests/errors/run.sh` (19 checks) in CI.
+- **Next-skill hints.** `skill-hint.sh` now also runs after Skill tool calls
+  and hints the skill the user most often runs next, from per-user chains
+  `session-start.sh` caches from `/api/similar/skill-chains` (at most every
+  6 hours, not in private mode or with hints off). Server-supplied names are
+  validated before use. Honours `DEVSCOPE_HINTS` like the PR hint.
+
+### Changed
+- Synchronous hooks share `_ds_api` in `_helpers.sh` (API key via curl config,
+  CSRF header, short timeout); the recall and error tests share a stub server
+  in `tests/lib/`.
+
 ## [0.18.1] - 2026-09-24
 
 ### Fixed
