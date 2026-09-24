@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.1] - 2026-09-24
+
+### Fixed
+- **Prompt recall never fired against a real server.** `prompt-recall.sh` did
+  not send the `x-requested-with` header the backend's CSRF middleware requires
+  on POSTs, so every call was rejected (and, by design, stayed silent). The test
+  stub now enforces the same rule.
+
 ## [0.18.0] - 2026-09-24
 
 ### Added

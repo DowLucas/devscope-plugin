@@ -25,7 +25,8 @@ BODY=$(jq -n --arg p "${PROMPT:0:8000}" --arg s "${SESSION_ID:-none}" '{prompt: 
 CURL_CONFIG=""
 [ -n "${DEVSCOPE_API_KEY:-}" ] && CURL_CONFIG="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
 RESP=$(printf '%s' "$CURL_CONFIG" | curl --config - -s -X POST "${DEVSCOPE_URL}/api/similar/preflight" \
-  -H "Content-Type: application/json" -d "$BODY" --max-time 2 2>/dev/null) || exit 0
+  -H "Content-Type: application/json" -H "x-requested-with: devscope-cli" \
+  -d "$BODY" --max-time 2 2>/dev/null) || exit 0
 
 CTX=$(printf '%s' "$RESP" | jq -r '.context // empty' 2>/dev/null)
 [ -n "$CTX" ] || exit 0
