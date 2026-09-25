@@ -11,6 +11,7 @@ for _ in $(seq 1 50); do curl -s -o /dev/null "$DEVSCOPE_URL" && break; sleep 0.
 
 respond() { printf '%s' "$1" > "$STUB_DIR/resp"; rm -f "$STUB_DIR/slow"; }
 slow() { touch "$STUB_DIR/slow"; }
-reset_hits() { : > "$STUB_DIR/hits"; }
+reset_hits() { : > "$STUB_DIR/hits"; : > "$STUB_DIR/paths"; }
+paths() { cat "$STUB_DIR/paths" 2>/dev/null; }
 hits() { [ -f "$STUB_DIR/hits" ] && wc -c < "$STUB_DIR/hits" | tr -d ' ' || echo 0; }
 last() { jq -r "$1" "$STUB_DIR/last"; }
