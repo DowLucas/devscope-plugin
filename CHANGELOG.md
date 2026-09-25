@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.20.0] - 2026-09-25
+
+### Added
+- **Voice announcements when a session needs you.** `/devscope:voice on` makes
+  DevScope speak when a session has waited on you past a grace delay: 30 s for
+  a permission prompt or question, 10 s for a failed turn, optionally 2 min for
+  a finished turn. Answer in time and it stays silent; otherwise it reminds you
+  every 5 min, up to 3 times. Works across all your sessions: announcements
+  never overlap, and three or more at once become one sentence. The sentence
+  comes from the server's `/api/ai/voice-summary` and follows your privacy
+  mode (standard sends no more than its events do; `private` never leaves the
+  machine and uses a local template, as does any server failure). Speaks with
+  Piper if installed (`/devscope:voice setup`), otherwise `say`/`spd-say`/
+  `espeak`. Also `off`, `mute 1h`, `unmute`, `test`, `status`, `finished on`.
+  Settings in `~/.config/devscope/voice.json`. `tests/voice/run.sh` (32 checks)
+  in CI.
+
+### Changed
+- The test stub server also records every request path (`paths` in
+  `tests/lib/stub.sh`).
+
 ## [0.19.0] - 2026-09-24
 
 ### Added

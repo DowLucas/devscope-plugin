@@ -18,6 +18,7 @@ hooks/
   hooks.json           # Hook event → script mappings
 commands/
   setup.md             # /devscope:setup slash command definition
+  voice.md             # /devscope:voice (on/off/mute/test/setup)
 scripts/
   _helpers.sh          # Shared helpers (config loading, SHA256, timestamps)
   send-event.sh        # Core event sender (all hooks call this)
@@ -44,6 +45,7 @@ scripts/
   directory-added.sh   # DirectoryAdded hook
   setup-hook.sh        # Setup hook (plugin init/maintenance)
   setup.sh             # Interactive setup (used by install.sh) — NOT a hook
+  voice/               # Voice announcer: lib.sh (arm/clear/announce), timer.sh, cli.sh
 install.sh             # One-liner installer with gum UI
 ```
 
@@ -162,6 +164,17 @@ claude plugin disable devscope@devscope                  # Disable
 - Config is read from `~/.config/devscope/config` (or `$XDG_CONFIG_HOME/devscope/config`)
 - Developer identity: `SHA256(git config user.email)`
 - Events POST to `$DEVSCOPE_URL/api/events` with optional `x-api-key` header
+- **Voice announcer** (opt-in, `/devscope:voice on`, settings in `~/.config/devscope/voice.json`):
+  `send-event.sh` calls `_ds_voice_on_event` for every event. Blocking events (permission
+  prompt, `AskUserQuestion`, elicitation, `StopFailure`, optionally `Stop`) write a marker to
+  `~/.cache/devscope/voice/pending/<session>.json` and start a detached `timer.sh`; later
+  activity from that session deletes the marker (tool events only for the same tool, so a
+  parallel tool does not count as an answer). When the grace delay passes with the marker
+  still there, the timer takes the global speak lock and speaks every due marker: an AI
+  sentence from `/api/ai/voice-summary`, or a local template for `private` sessions or when
+  the backend fails; three or more at once become one sentence. Speech uses Piper if
+  installed (`/devscope:voice setup`), else `say`/`spd-say`/`espeak`. What is sent follows the
+  privacy mode: `standard` sends no more than its events do. Tests: `tests/voice/run.sh`.
 
 ## Making Changes
 

@@ -148,6 +148,19 @@ DEVSCOPE_HINTS=off                   # no hints
 DEVSCOPE_HINT_AFTER_PR=/review-pr    # suggest a different command (default: /code-review)
 ```
 
+## Voice announcements
+
+Running several sessions, or working in another window? `/devscope:voice on` makes DevScope tell you out loud when a session has been waiting on you for a while:
+
+> "devscope-cloud wants to run the database migration and is waiting for your approval."
+
+- **Only when you've lost track.** It speaks after a grace delay (30 s for permission prompts and questions, 10 s for failed turns). Answer in time and it stays silent. If you don't, it reminds you every 5 minutes, up to 3 times.
+- **Across all sessions.** Announcements play one at a time, and three or more at once become one sentence ("three sessions need you: ...").
+- **Summaries follow your privacy mode.** Sentences are written by DevScope's AI from what your privacy mode already sends. `private` sessions never leave your machine and use a local template.
+- **Natural offline voice.** `/devscope:voice setup` installs [Piper](https://github.com/rhasspy/piper) (Linux; `pipx install piper-tts` on macOS). Without it, the system voice (`say`, `spd-say`, `espeak`) is used.
+
+Other commands: `off`, `mute 1h`, `unmute`, `test`, `status`, `finished on` (also announce finished turns after 2 min). Settings live in `~/.config/devscope/voice.json`.
+
 ## What's Tracked
 
 | Event | Data Sent |
