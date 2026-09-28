@@ -12,7 +12,8 @@ export HOME="$TMP" XDG_CONFIG_HOME="$TMP/config"
 unset DEVSCOPE_PRIVACY
 # shellcheck disable=SC1091
 . "$ROOT/tests/lib/stub.sh"
-export DS_VOICE_SPEAK_LOG="$TMP/spoken" DEVSCOPE_NO_DRAIN=1
+# The suite may itself run under Claude Code, whose child shells would match.
+export DS_VOICE_SPEAK_LOG="$TMP/spoken" DEVSCOPE_NO_DRAIN=1 DS_VOICE_CLAUDE_PID=none
 CONF="$XDG_CONFIG_HOME/devscope/voice.json"
 PENDING="$HOME/.cache/devscope/voice/pending"
 mkdir -p "$(dirname "$CONF")"
@@ -57,6 +58,20 @@ hook permission-request.sh s2 /work/cloud "$PERM"
 hook tool-complete.sh s2 /work/cloud "$DONE_BASH"
 [ ! -f "$PENDING/s2.json" ] && ok "tool completing clears the marker" || bad "clear" "marker left"
 sleep 2; [ "$(lines)" = 0 ] && ok "answered in time: silent" || bad "silent" "$(spoken)"
+
+# 2b. Approved and still running: the command shows up as a child of the
+# session's claude process (here: this test shell), so nothing is said.
+configure; reset
+sh -c ': bun run migrate --force; sleep 4' &
+RUNNING=$!
+DS_VOICE_CLAUDE_PID=$$ hook permission-request.sh s15 /work/cloud "$PERM"
+[ "$(jq -r .match "$PENDING/s15.json")" = "bun run migrate --force" ] && ok "records the command locally" || bad "match" "$(cat "$PENDING/s15.json")"
+sleep 2.5
+[ "$(lines)" = 0 ] && [ ! -f "$PENDING/s15.json" ] && ok "approved long-running command: silent" || bad "approved running" "$(spoken)"
+kill "$RUNNING" 2>/dev/null; wait "$RUNNING" 2>/dev/null || true
+configure; reset
+DS_VOICE_CLAUDE_PID=$$ DEVSCOPE_PRIVACY=private hook permission-request.sh s16 /work/cloud "$PERM"
+wait_spoken 1 5 && ok "not running yet: still announced" || bad "not running" "silent"
 
 # 3. Another tool finishing in parallel does not count as an answer.
 configure; reset

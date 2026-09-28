@@ -18,8 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   machine and uses a local template, as does any server failure). Speaks with
   Piper if installed (`/devscope:voice setup`), otherwise `say`/`spd-say`/
   `espeak`. Also `off`, `mute 1h`, `unmute`, `test`, `status`, `finished on`.
-  Settings in `~/.config/devscope/voice.json`. `tests/voice/run.sh` (32 checks)
+  Settings in `~/.config/devscope/voice.json`. `tests/voice/run.sh` (35 checks)
   in CI.
+  An approved Bash command that runs past the delay is not announced: Claude
+  Code has no approval hook, so the announcer checks for the command running
+  under the session's `claude` process.
 
 ### Changed
 - The test stub server also records every request path (`paths` in

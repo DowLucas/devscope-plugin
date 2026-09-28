@@ -169,7 +169,10 @@ claude plugin disable devscope@devscope                  # Disable
   prompt, `AskUserQuestion`, elicitation, `StopFailure`, optionally `Stop`) write a marker to
   `~/.cache/devscope/voice/pending/<session>.json` and start a detached `timer.sh`; later
   activity from that session deletes the marker (tool events only for the same tool, so a
-  parallel tool does not count as an answer). When the grace delay passes with the marker
+  parallel tool does not count as an answer). No hook fires on approval, so
+  before speaking a Bash permission marker the timer checks whether the session's `claude`
+  process has a child shell running that command (recorded locally at arm time); if so it
+  was approved and the marker is dropped. When the grace delay passes with the marker
   still there, the timer takes the global speak lock and speaks every due marker: an AI
   sentence from `/api/ai/voice-summary`, or a local template for `private` sessions or when
   the backend fails; three or more at once become one sentence. Speech uses Piper if

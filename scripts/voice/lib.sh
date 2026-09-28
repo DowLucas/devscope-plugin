@@ -182,8 +182,47 @@ _ds_voice_notification_message() {
   printf '%s' "$1" | jq -r 'if .hook_event_name == "Notification" then .message // "" | .[:100] else "" end' 2>/dev/null
 }
 
+# PID of the Claude Code process this hook runs under, or nothing.
+_ds_voice_claude_pid() {
+  local p=$$ i=0
+  # Test hook: a PID, or "none" to skip the lookup.
+  if [ -n "${DS_VOICE_CLAUDE_PID:-}" ]; then
+    case "$DS_VOICE_CLAUDE_PID" in *[!0-9]*) ;; *) printf '%s' "$DS_VOICE_CLAUDE_PID" ;; esac
+    return
+  fi
+  while [ "$p" -gt 1 ] && [ "$i" -lt 12 ]; do
+    case "$(ps -o comm= -p "$p" 2>/dev/null)" in
+      claude|*/claude) printf '%s' "$p"; return ;;
+      node|*/node) ps -o args= -p "$p" 2>/dev/null | grep -q claude && { printf '%s' "$p"; return; } ;;
+    esac
+    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
+    [ -n "$p" ] || return 0
+    i=$((i + 1))
+  done
+}
+
+# The start of a Bash command as it appears in the argv of the shell Claude
+# Code runs it in (`... eval '<command>'`): up to the first quote, which the
+# eval escapes, and at most 60 characters.
+_ds_voice_command_needle() {
+  printf '%s' "$1" | jq -r '.tool_input.command // "" | split("\n")[0] | split("\u0027")[0] | .[:60]' 2>/dev/null
+}
+
+# Claude Code has no hook for "the user approved": a running tool only shows up
+# at PostToolUse, after it finishes. A Bash command is visible sooner, as a
+# child process of the session's claude process, so an approved long-running
+# command is detected here instead of being announced as still waiting.
+_ds_voice_tool_started() {  # marker-file
+  local pid needle
+  pid=$(jq -r '.claudePid // ""' "$1" 2>/dev/null)
+  needle=$(jq -r '.match // ""' "$1" 2>/dev/null)
+  [ -n "$pid" ] && [ "${#needle}" -ge 3 ] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  ps -Ao ppid=,args= 2>/dev/null | awk -v p="$pid" -v n="$needle" '$1 == p && index($0, n) { f = 1 } END { exit !f }'
+}
+
 _ds_voice_arm() {  # session-id type hook-input
-  local sid="$1" type="$2" input="$3" m tool cwd last eid tmp
+  local sid="$1" type="$2" input="$3" m tool cwd last eid tmp pid="" match=""
   m=$(_ds_voice_marker "$sid")
   tool=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null)
   # The same block reported twice (hook plus notification) keeps its timer.
@@ -194,6 +233,11 @@ _ds_voice_arm() {  # session-id type hook-input
   last=""
   [ "${DEVSCOPE_PRIVACY:-standard}" = "open" ] && \
     last=$(printf '%s' "$input" | jq -r '.last_assistant_message // "" | .[:1500]' 2>/dev/null)
+  # Local only (never sent): lets the timer see an approved command running.
+  if [ "$type" = "permission" ] && [ "$tool" = "Bash" ]; then
+    pid=$(_ds_voice_claude_pid)
+    match=$(_ds_voice_command_needle "$input")
+  fi
   eid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "v-$(_ds_now_ns)")
   _ds_voice_mkdirs
   tmp="$m.tmp.$$"
@@ -202,9 +246,11 @@ _ds_voice_arm() {  # session-id type hook-input
     --arg project "$(basename "${cwd:-session}")" \
     --arg detail "$(_ds_voice_detail "$type" "$tool" "$input")" \
     --arg last "$last" --arg privacy "${DEVSCOPE_PRIVACY:-standard}" \
+    --arg pid "$pid" --arg match "$match" \
     --argjson now "$(date +%s)" \
     '{eventId: $eid, sessionId: $sid, type: $type, tool: $tool, project: $project,
-      detail: $detail, lastMessage: $last, privacy: $privacy, armedAt: $now, spoken: 0}' \
+      detail: $detail, lastMessage: $last, privacy: $privacy, armedAt: $now, spoken: 0,
+      claudePid: $pid, match: $match}' \
     > "$tmp" && mv "$tmp" "$m" || { rm -f "$tmp"; return 0; }
   _ds_voice_spawn "$DS_VOICE_LIB_DIR/timer.sh" "$sid" "$eid"
 }
@@ -291,6 +337,10 @@ _ds_voice_announce_due() {
     [ -f "$f" ] || continue
     due=$(_ds_voice_due "$f" "$now") || continue
     [ "$now" -ge "$due" ] || continue
+    if _ds_voice_tool_started "$f"; then
+      rm -f "$f"
+      continue
+    fi
     files+=("$f")
     eids+=("$(jq -r '.eventId' "$f" 2>/dev/null)")
   done
