@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.21.0] - 2026-09-28
+
+### Added
+- **Server voice.** Voice announcements are now spoken by the DevScope server
+  (`/api/ai/voice-audio`, a Kokoro model on the homelab) by default: a natural
+  voice with nothing to install. Default voice `am_michael` at 1.5×; set
+  `voice` and `speed` in `~/.config/devscope/voice.json`. New engine value
+  `server` (`auto` prefers it). `private` sessions never use it, and when the
+  server has no voice or can't be reached the announcer falls back to Piper or
+  the system voice.
+
+### Changed
+- The test stub server can answer with a chosen status and content type.
+- The "answered in time" test allows 3 s, so a slow runner can't beat it.
+
 ## [0.20.0] - 2026-09-25
 
 ### Added

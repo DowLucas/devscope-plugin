@@ -157,7 +157,7 @@ Running several sessions, or working in another window? `/devscope:voice on` mak
 - **Only when you've lost track.** It speaks after a grace delay (30 s for permission prompts and questions, 10 s for failed turns). Answer in time and it stays silent. If you don't, it reminds you every 5 minutes, up to 3 times.
 - **Across all sessions.** Announcements play one at a time, and three or more at once become one sentence ("three sessions need you: ...").
 - **Summaries follow your privacy mode.** Sentences are written by DevScope's AI from what your privacy mode already sends. `private` sessions never leave your machine and use a local template.
-- **Natural offline voice.** `/devscope:voice setup` installs [Piper](https://github.com/rhasspy/piper) (Linux; `pipx install piper-tts` on macOS). Without it, the system voice (`say`, `spd-say`, `espeak`) is used.
+- **Natural voice, nothing to install.** Announcements are voiced by your DevScope server (Kokoro, default voice `am_michael` at 1.5×; change `voice`/`speed` in `voice.json`). `private` sessions, and any time the server can't be reached, use a local voice instead: [Piper](https://github.com/rhasspy/piper) if you ran `/devscope:voice setup` (Linux; `pipx install piper-tts` on macOS), otherwise the system voice (`say`, `spd-say`, `espeak`).
 
 Other commands: `off`, `mute 1h`, `unmute`, `test`, `status`, `finished on` (also announce finished turns after 2 min). Settings live in `~/.config/devscope/voice.json`.
 

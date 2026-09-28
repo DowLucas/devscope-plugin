@@ -5,7 +5,8 @@
 Answers every request with the body in DIR/resp (sleeping 5 s first if
 DIR/slow exists), appends one byte per request to DIR/hits, and writes the
 last request's path, API key and JSON body to DIR/last, and appends each
-path to DIR/paths. POSTs without the
+path to DIR/paths. DIR/status and DIR/ctype, when present, override the
+response status (200) and content type (application/json). POSTs without the
 x-requested-with header get 403, like the backend's CSRF middleware.
 """
 import json, os, sys, time
@@ -18,9 +19,9 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def reply(self, status, body):
+    def reply(self, status, body, ctype="application/json"):
         self.send_response(status)
-        self.send_header("content-type", "application/json")
+        self.send_header("content-type", ctype)
         self.end_headers()
         self.wfile.write(body.encode())
 
@@ -35,7 +36,9 @@ class H(BaseHTTPRequestHandler):
                        "body": json.loads(raw) if raw else None}, f)
         if os.path.exists(os.path.join(d, "slow")):
             time.sleep(5)
-        self.reply(200, open(os.path.join(d, "resp")).read())
+        status = int(open(os.path.join(d, "status")).read()) if os.path.exists(os.path.join(d, "status")) else 200
+        ctype = open(os.path.join(d, "ctype")).read().strip() if os.path.exists(os.path.join(d, "ctype")) else "application/json"
+        self.reply(status, open(os.path.join(d, "resp")).read(), ctype)
 
     def do_GET(self):
         self.handle_any("GET")
