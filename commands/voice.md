@@ -14,6 +14,6 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/voice/cli.sh" $ARGUMENTS
 
 Show the output to the user in a few short lines. Do not run anything else.
 
-If the engine is `system` or `none`, mention that `/devscope:voice setup` installs Piper, a natural offline voice (Linux; on macOS use `pipx install piper-tts`).
+The default engine is `server`: the DevScope server voices announcements (Kokoro, `voice`/`speed` in voice.json, default `am_michael` at 1.5x). If the engine is `system` or `none`, mention that it needs a DevScope API key (`/devscope:setup`), and that `/devscope:voice setup` installs Piper as an offline fallback (Linux; on macOS use `pipx install piper-tts`).
 
-When the announcer is on, it speaks only after a session has waited on the user past a grace delay (30 s for permission prompts and questions, 10 s for failures, 2 min for finished turns if enabled), then reminds every 5 min, up to 3 times. Answering in time keeps it silent. Settings live in `~/.config/devscope/voice.json` (`delays`, `reminder_interval`, `max_reminders`, `engine`: `auto`/`piper`/`system`/`off`, `piper_model`).
+When the announcer is on, it speaks only after a session has waited on the user past a grace delay (30 s for permission prompts and questions, 10 s for failures, 2 min for finished turns if enabled), then reminds every 5 min, up to 3 times. Answering in time keeps it silent. Settings live in `~/.config/devscope/voice.json` (`delays`, `reminder_interval`, `max_reminders`, `engine`: `auto`/`server`/`piper`/`system`/`off`, `voice`, `speed`, `piper_model`).

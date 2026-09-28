@@ -13,7 +13,7 @@ unset DEVSCOPE_PRIVACY
 # shellcheck disable=SC1091
 . "$ROOT/tests/lib/stub.sh"
 # The suite may itself run under Claude Code, whose child shells would match.
-export DS_VOICE_SPEAK_LOG="$TMP/spoken" DEVSCOPE_NO_DRAIN=1 DS_VOICE_CLAUDE_PID=none
+export DS_VOICE_SPEAK_LOG="$TMP/spoken" DS_VOICE_PRIVACY_LOG="$TMP/privacy" DEVSCOPE_NO_DRAIN=1 DS_VOICE_CLAUDE_PID=none
 CONF="$XDG_CONFIG_HOME/devscope/voice.json"
 PENDING="$HOME/.cache/devscope/voice/pending"
 mkdir -p "$(dirname "$CONF")"
@@ -27,7 +27,7 @@ configure() {  # extra jq
           reminder_interval: 60, max_reminders: 0} ${1:+| $1}" > "$CONF"
 }
 # Kill leftover timers and let their in-flight requests land before the next case.
-reset() { pkill -f "$S/voice/timer.sh" 2>/dev/null || true; sleep 0.5; rm -rf "$PENDING" "$DS_VOICE_SPEAK_LOG"; reset_hits; }
+reset() { pkill -f "$S/voice/timer.sh" 2>/dev/null || true; sleep 0.5; rm -rf "$PENDING" "$DS_VOICE_SPEAK_LOG" "$DS_VOICE_PRIVACY_LOG"; reset_hits; }
 spoken() { cat "$DS_VOICE_SPEAK_LOG" 2>/dev/null || true; }
 lines() { spoken | grep -c . || true; }
 wait_spoken() {  # min-lines max-seconds
@@ -52,12 +52,13 @@ wait_spoken 1 5 && [ "$(spoken)" = "cloud wants to run the migration." ] && ok "
 [ "$(last .body.detail)" = "runs the bun command" ] && ok "standard mode: command name only" || bad "standard detail" "$(last .body.detail)"
 last .body | grep -q migrate && bad "standard leak" "$(last .body)" || ok "standard mode: no command text sent"
 
-# 2. Answered in time: the tool ran, nothing is said.
-configure; reset
+# 2. Answered in time: the tool ran, nothing is said. (3 s: the tool-complete
+# hook itself can take over a second on a busy runner.)
+configure '.delays.permission = 3'; reset
 hook permission-request.sh s2 /work/cloud "$PERM"
 hook tool-complete.sh s2 /work/cloud "$DONE_BASH"
 [ ! -f "$PENDING/s2.json" ] && ok "tool completing clears the marker" || bad "clear" "marker left"
-sleep 2; [ "$(lines)" = 0 ] && ok "answered in time: silent" || bad "silent" "$(spoken)"
+sleep 4; [ "$(lines)" = 0 ] && ok "answered in time: silent" || bad "silent" "$(spoken)"
 
 # 2b. Approved and still running: the command shows up as a child of the
 # session's claude process (here: this test shell), so nothing is said.
@@ -85,6 +86,7 @@ hook prompt-submit.sh s3 /work/cloud '{hook_event_name: "UserPromptSubmit", prom
 configure; reset
 DEVSCOPE_PRIVACY=private hook permission-request.sh s4 /work/secret "$PERM"
 wait_spoken 1 5 && [ "$(spoken)" = "secret needs permission to use Bash." ] && ok "private: template spoken" || bad "private" "$(spoken)"
+[ "$(cat "$DS_VOICE_PRIVACY_LOG")" = "private" ] && ok "private: spoken as private (no server voice)" || bad "private voice" "$(cat "$DS_VOICE_PRIVACY_LOG")"
 paths | grep -q voice-summary && bad "private request" "$(paths | tr '\n' ' ') $(cat "$HOME/.cache/devscope/voice/voice.log")" || ok "private: no summary request"
 
 # 5. Open mode sends the command description; server down falls back to the template.
@@ -124,6 +126,7 @@ configure '.delays.permission = 8'; reset
 for p in alpha beta gamma; do DEVSCOPE_PRIVACY=private hook permission-request.sh "b-$p" "/work/$p" "$PERM"; sleep 1; done
 wait_spoken 1 20; sleep 2
 [ "$(lines)" = 1 ] && spoken | grep -q "^three sessions need you: alpha, beta and gamma.$" && ok "staggered sessions batch into one sentence" || bad "batch" "$(spoken)"
+[ "$(cat "$DS_VOICE_PRIVACY_LOG")" = "private" ] && ok "batch with a private session is spoken as private" || bad "batch privacy" "$(cat "$DS_VOICE_PRIVACY_LOG")"
 
 # 8. Reminders repeat with a prefix, up to the maximum.
 configure '.reminder_interval = 0 | .max_reminders = 1'; reset
@@ -146,6 +149,28 @@ configure; reset
 hook permission-request.sh s11 /work/cloud "$PERM"
 jq '.armedAt -= 4000' "$PENDING/s11.json" > "$TMP/m" && mv "$TMP/m" "$PENDING/s11.json"
 sleep 2.5; [ ! -f "$PENDING/s11.json" ] && [ "$(lines)" = 0 ] && ok "stale marker dropped silently" || bad "stale" "$(spoken)"
+
+# 10b. Server voice: /api/ai/voice-audio, played locally; never for private.
+reset
+server_speak() {  # privacy -> prints "rc <played bytes>"
+  ( unset DS_VOICE_SPEAK_LOG
+    . "$S/_helpers.sh"; . "$S/voice/lib.sh"
+    _ds_voice_play() { cp "$1" "$TMP/played.wav"; }
+    rm -f "$TMP/played.wav"
+    _ds_voice_server "cloud needs you" "$1"; echo "$? $(cat "$TMP/played.wav" 2>/dev/null)" )
+}
+configure; respond "RIFFfake" "audio/wav"; reset_hits
+[ "$(server_speak standard)" = "0 RIFFfake" ] && ok "server voice: plays the returned audio" || bad "server play" "$(server_speak standard)"
+[ "$(last .path)" = "/api/ai/voice-audio" ] && [ "$(last .key)" = "test-key" ] && ok "server voice: calls voice-audio with the API key" || bad "server path" "$(last .)"
+[ "$(last .body.text)/$(last .body.voice)/$(last .body.speed)" = "cloud needs you/am_michael/1.5" ] && ok "server voice: default am_michael at 1.5x" || bad "server body" "$(last .body)"
+configure '.voice = "af_heart" | .speed = 1.2'
+server_speak standard >/dev/null; [ "$(last .body.voice)/$(last .body.speed)" = "af_heart/1.2" ] && ok "server voice: voice and speed from voice.json" || bad "server config" "$(last .body)"
+configure; reset_hits
+[ "$(server_speak private)" = "1 " ] && [ "$(hits)" = 0 ] && ok "server voice: never for private sessions" || bad "server private" "hits=$(hits)"
+respond '{"error":"Server voice unavailable"}' "application/json" 503
+[ "$(server_speak standard)" = "1 " ] && ok "server voice: 503 falls back (fails)" || bad "server 503" "$(server_speak standard)"
+respond '{"ok":true}'
+[ "$(DEVSCOPE_API_KEY='' server_speak standard)" = "1 " ] && ok "server voice: needs an API key" || bad "server no key" ""
 
 # 11. CLI.
 "$S/voice/cli.sh" off >/dev/null; [ "$(jq -r .enabled "$CONF")" = false ] && ok "cli off" || bad "cli off" "$(cat "$CONF")"

@@ -9,7 +9,12 @@ trap 'kill $STUB_PID 2>/dev/null; rm -rf "$TMP"' EXIT
 export DEVSCOPE_URL="http://127.0.0.1:$_port" DEVSCOPE_API_KEY="test-key"
 for _ in $(seq 1 50); do curl -s -o /dev/null "$DEVSCOPE_URL" && break; sleep 0.1; done
 
-respond() { printf '%s' "$1" > "$STUB_DIR/resp"; rm -f "$STUB_DIR/slow"; }
+respond() {  # body [content-type] [status]
+  printf '%s' "$1" > "$STUB_DIR/resp"; rm -f "$STUB_DIR/slow" "$STUB_DIR/ctype" "$STUB_DIR/status"
+  [ -n "${2:-}" ] && printf '%s' "$2" > "$STUB_DIR/ctype"
+  [ -n "${3:-}" ] && printf '%s' "$3" > "$STUB_DIR/status"
+  return 0
+}
 slow() { touch "$STUB_DIR/slow"; }
 reset_hits() { : > "$STUB_DIR/hits"; : > "$STUB_DIR/paths"; }
 paths() { cat "$STUB_DIR/paths" 2>/dev/null; }

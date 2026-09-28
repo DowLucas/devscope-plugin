@@ -34,6 +34,10 @@ DS_VOICE_MIN_REMINDER_INTERVAL=5
 DS_VOICE_MAX_SLEEP=30
 # A speech engine or player that hangs longer than this is killed.
 DS_VOICE_SPEAK_TIMEOUT=30
+# Server voice (Kokoro): defaults for voice.json `voice` and `speed`.
+DS_VOICE_SERVER_VOICE=am_michael
+DS_VOICE_SERVER_SPEED=1.5
+DS_VOICE_SERVER_TIMEOUT=20
 
 # State and log can hold summaries of the user's work: keep them owner-only.
 _ds_voice_mkdirs() {
@@ -333,7 +337,7 @@ _ds_voice_bump() {  # marker-file event-id
 # gets there first announces for all sessions and the rest find nothing left.
 # Markers due within the batch window count too when that makes a batch.
 _ds_voice_announce_due() {
-  local now f due eid text names n i
+  local now f due eid text names n i privacy
   local -a files=() eids=() soon=() soon_eids=()
   now=$(date +%s)
   for f in "$DS_VOICE_PENDING"/*.json; do
@@ -360,8 +364,13 @@ _ds_voice_announce_due() {
     names=$(for f in "${files[@]}"; do jq -r '.project' "$f"; done | awk '
       { a[NR] = $0 } END { for (i = 1; i <= NR; i++) printf "%s%s", (i == 1 ? "" : (i == NR ? " and " : ", ")), a[i] }')
     text="$(_ds_voice_count_word "$n") sessions need you: $names."
+    # It names every project, so it is private if any of them is.
+    privacy=standard
+    for f in "${files[@]}"; do
+      [ "$(jq -r '.privacy' "$f" 2>/dev/null)" = "private" ] && privacy=private
+    done
     _ds_voice_log "speak: $text"
-    _ds_voice_speak "$text"
+    _ds_voice_speak "$text" "$privacy"
     for i in "${!files[@]}"; do _ds_voice_bump "${files[$i]}" "${eids[$i]}"; done
     return 0
   fi
@@ -372,7 +381,7 @@ _ds_voice_announce_due() {
     # Summarizing takes a moment; skip a session that was answered meanwhile.
     [ "$(jq -r '.eventId' "$f" 2>/dev/null)" = "${eids[$i]}" ] || continue
     _ds_voice_log "speak: $text"
-    _ds_voice_speak "$text"
+    _ds_voice_speak "$text" "$(jq -r '.privacy' "$f" 2>/dev/null)"
     _ds_voice_bump "$f" "${eids[$i]}"
   done
 }
@@ -401,6 +410,28 @@ _ds_voice_with_lock() {
 }
 
 # --- Speech engines ---
+
+# Voiced by the DevScope server (/api/ai/voice-audio, Kokoro on the homelab),
+# so no local model is needed. Only for text the server already produced or
+# may see: never for `private` sessions. Fails when the server has no voice.
+_ds_voice_server() {  # text privacy
+  local wav body code rc cfg=""
+  [ "${2:-standard}" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ] || return 1
+  body=$(jq -nc --arg t "$1" --arg v "$(_ds_voice_conf .voice "$DS_VOICE_SERVER_VOICE")" \
+    --argjson s "$(_ds_voice_conf .speed "$DS_VOICE_SERVER_SPEED")" \
+    '{text: $t, voice: $v, speed: $s}' 2>/dev/null) || return 1
+  wav="$(mktemp "${TMPDIR:-/tmp}/ds-voice.XXXXXX")" || return 1
+  cfg="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
+  code=$(printf '%s' "$cfg" | curl --config - -s -o "$wav" -w '%{http_code} %{content_type}' \
+    -X POST "${DEVSCOPE_URL}/api/ai/voice-audio" -H "x-requested-with: devscope-cli" \
+    -H "Content-Type: application/json" -d "$body" --max-time "$DS_VOICE_SERVER_TIMEOUT" 2>/dev/null)
+  case "$code" in
+    "200 audio/"*) _ds_voice_play "$wav"; rc=$? ;;
+    *) _ds_voice_log "server voice unavailable (${code:-no response})"; rc=1 ;;
+  esac
+  rm -f "$wav"
+  return "$rc"
+}
 
 _ds_voice_piper_bin() {
   if command -v piper >/dev/null 2>&1; then
@@ -460,6 +491,9 @@ _ds_voice_engine() {
   local engine
   engine=$(_ds_voice_conf .engine auto)
   [ "$engine" = "off" ] && { echo none; return; }
+  case "$engine" in
+    auto|server) [ -n "${DEVSCOPE_API_KEY:-}" ] && { echo server; return; } ;;
+  esac
   if [ "$engine" != "system" ] && _ds_voice_piper_bin >/dev/null && \
      [ -f "$(_ds_voice_conf .piper_model "$DS_VOICE_DEFAULT_MODEL")" ]; then
     echo piper; return
@@ -471,9 +505,10 @@ _ds_voice_engine() {
   echo none
 }
 
-# Speak a sentence. Piper when installed, otherwise the OS voice; silent if neither.
-_ds_voice_speak() {
-  local engine text
+# Speak a sentence: the server voice (not for private sessions), else Piper
+# when installed, else the OS voice; silent if none works.
+_ds_voice_speak() {  # text [privacy]
+  local engine text privacy="${2:-standard}"
   # Engines take the text as an argument: a leading "-" (a project folder
   # named "-o x", say) would be parsed as an option.
   text=$(printf '%s' "$1" | sed 's/^[^[:alnum:]]*//')
@@ -483,8 +518,12 @@ _ds_voice_speak() {
   [ "$engine" = "off" ] && return 0
   if [ -n "${DS_VOICE_SPEAK_LOG:-}" ]; then  # test hook
     printf '%s\n' "$1" >> "$DS_VOICE_SPEAK_LOG"
+    [ -n "${DS_VOICE_PRIVACY_LOG:-}" ] && printf '%s\n' "$privacy" >> "$DS_VOICE_PRIVACY_LOG"
     return 0
   fi
+  case "$engine" in
+    auto|server) _ds_voice_server "$1" "$privacy" && return 0 ;;
+  esac
   if [ "$engine" != "system" ] && _ds_voice_piper "$1"; then return 0; fi
   _ds_voice_system "$1" || _ds_voice_log "no speech engine available"
   return 0

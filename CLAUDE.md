@@ -175,8 +175,11 @@ claude plugin disable devscope@devscope                  # Disable
   was approved and the marker is dropped. When the grace delay passes with the marker
   still there, the timer takes the global speak lock and speaks every due marker: an AI
   sentence from `/api/ai/voice-summary`, or a local template for `private` sessions or when
-  the backend fails; three or more at once become one sentence. Speech uses Piper if
-  installed (`/devscope:voice setup`), else `say`/`spd-say`/`espeak`. What is sent follows the
+  the backend fails; three or more due within 15 s become one sentence. Speech uses the
+  server voice by default (`/api/ai/voice-audio`, Kokoro on the homelab; `voice`/`speed` in
+  voice.json, default `am_michael` at 1.5×), never for `private` sessions; if the server has
+  no voice or is unreachable it falls back to Piper if installed (`/devscope:voice setup`),
+  else `say`/`spd-say`/`espeak`. What is sent follows the
   privacy mode: `standard` sends no more than its events do. Tests: `tests/voice/run.sh`.
 
 ## Making Changes

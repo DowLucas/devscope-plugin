@@ -16,6 +16,8 @@ status() {
   local mute pending
   echo "Voice announcer: $(_ds_voice_enabled && echo on || echo off)"
   echo "Engine: $(_ds_voice_engine) (setting: $(_ds_voice_conf .engine auto))"
+  [ "$(_ds_voice_engine)" = "server" ] && \
+    echo "Server voice: $(_ds_voice_conf .voice "$DS_VOICE_SERVER_VOICE") at $(_ds_voice_conf .speed "$DS_VOICE_SERVER_SPEED")x via $DEVSCOPE_URL (private sessions and outages use a local voice)"
   echo "Delays: permission $(_ds_voice_delay permission)s, question $(_ds_voice_delay question)s," \
        "failed $(_ds_voice_delay failed)s, finished $(_ds_voice_delay finished)s" \
        "($( [ "$(_ds_voice_conf .announce_finished false)" = true ] && echo announced || echo not announced))"
@@ -25,7 +27,10 @@ status() {
   pending=$(find "$DS_VOICE_PENDING" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
   echo "Sessions waiting on you: $pending"
   echo "Settings: $DS_VOICE_CONFIG"
-  [ "$(_ds_voice_engine)" = "piper" ] || echo "Tip: run '/devscope:voice setup' for the natural Piper voice."
+  case "$(_ds_voice_engine)" in
+    server|piper) ;;
+    *) echo "Tip: run '/devscope:setup' (API key) for the server voice, or '/devscope:voice setup' for Piper." ;;
+  esac
 }
 
 to_seconds() {
@@ -92,7 +97,8 @@ case "${1:-status}" in
     esac ;;
   test)
     echo "Speaking with: $(_ds_voice_engine)"
-    _ds_voice_speak "$(_ds_voice_template permission "$(basename "$PWD")" Bash) This is a DevScope voice test." ;;
+    _ds_voice_speak "$(_ds_voice_template permission "$(basename "$PWD")" Bash) This is a DevScope voice test." \
+      "${DEVSCOPE_PRIVACY:-standard}" ;;
   setup) setup ;;
   *)
     echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off]"
