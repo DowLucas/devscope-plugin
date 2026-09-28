@@ -118,12 +118,12 @@ DEVSCOPE_PRIVACY=private hook permission-request.sh s14 "/work/-o x" "$PERM"
 wait_spoken 1 5 && [ "$(spoken)" = "o x needs permission to use Bash." ] && ok "leading dash stripped" || bad "dash" "$(spoken)"
 [ "$(stat -c %a "$HOME/.cache/devscope/voice" 2>/dev/null || stat -f %Lp "$HOME/.cache/devscope/voice")" = 700 ] && ok "voice dir is 0700" || bad "perms" "$(ls -ld "$HOME/.cache/devscope/voice")"
 
-# 7. Three sessions due together are one sentence.
-# Long enough that slow CI runners arm all three before the first is due.
-configure '.delays.permission = 10'; reset
-for p in alpha beta gamma; do DEVSCOPE_PRIVACY=private hook permission-request.sh "b-$p" "/work/$p" "$PERM"; done
-wait_spoken 1 20; sleep 1.5
-[ "$(lines)" = 1 ] && spoken | grep -q "^three sessions need you: " && ok "three due sessions batch into one sentence" || bad "batch" "$(spoken)"
+# 7. Three sessions falling due within the batch window are one sentence,
+# even when they blocked seconds apart.
+configure '.delays.permission = 8'; reset
+for p in alpha beta gamma; do DEVSCOPE_PRIVACY=private hook permission-request.sh "b-$p" "/work/$p" "$PERM"; sleep 1; done
+wait_spoken 1 20; sleep 2
+[ "$(lines)" = 1 ] && spoken | grep -q "^three sessions need you: alpha, beta and gamma.$" && ok "staggered sessions batch into one sentence" || bad "batch" "$(spoken)"
 
 # 8. Reminders repeat with a prefix, up to the maximum.
 configure '.reminder_interval = 0 | .max_reminders = 1'; reset

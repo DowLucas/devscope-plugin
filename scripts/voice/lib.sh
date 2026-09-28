@@ -22,8 +22,10 @@ DS_VOICE_DEFAULT_MODEL="$DS_VOICE_DATA/en_US-lessac-medium.onnx"
 # A marker this old belongs to a session that most likely died without
 # SessionEnd (closed terminal): drop it rather than keep reminding.
 DS_VOICE_STALE_SEC=1800
-# This many announcements falling due together are read as one sentence.
+# This many announcements falling due within DS_VOICE_BATCH_WINDOW seconds of
+# each other are read as one sentence (sessions rarely block the same second).
 DS_VOICE_BATCH_MIN=3
+DS_VOICE_BATCH_WINDOW=15
 DS_VOICE_REMINDER_INTERVAL=300
 DS_VOICE_MAX_REMINDERS=3
 # Floor for reminder_interval, so a 0 cannot loop speech back to back.
@@ -329,25 +331,32 @@ _ds_voice_bump() {  # marker-file event-id
 
 # Speak every marker that is due. Runs under the speak lock, so whichever timer
 # gets there first announces for all sessions and the rest find nothing left.
+# Markers due within the batch window count too when that makes a batch.
 _ds_voice_announce_due() {
   local now f due eid text names n i
-  local -a files=() eids=()
+  local -a files=() eids=() soon=() soon_eids=()
   now=$(date +%s)
   for f in "$DS_VOICE_PENDING"/*.json; do
     [ -f "$f" ] || continue
     due=$(_ds_voice_due "$f" "$now") || continue
-    [ "$now" -ge "$due" ] || continue
+    [ "$due" -le $((now + DS_VOICE_BATCH_WINDOW)) ] || continue
     if _ds_voice_tool_started "$f"; then
       rm -f "$f"
       continue
     fi
-    files+=("$f")
-    eids+=("$(jq -r '.eventId' "$f" 2>/dev/null)")
+    eid=$(jq -r '.eventId' "$f" 2>/dev/null)
+    if [ "$now" -ge "$due" ]; then
+      files+=("$f"); eids+=("$eid")
+    else
+      soon+=("$f"); soon_eids+=("$eid")
+    fi
   done
   n=${#files[@]}
   [ "$n" -gt 0 ] || return 0
 
-  if [ "$n" -ge "$DS_VOICE_BATCH_MIN" ]; then
+  if [ $((n + ${#soon[@]})) -ge "$DS_VOICE_BATCH_MIN" ]; then
+    for i in "${!soon[@]}"; do files+=("${soon[$i]}"); eids+=("${soon_eids[$i]}"); done
+    n=${#files[@]}
     names=$(for f in "${files[@]}"; do jq -r '.project' "$f"; done | awk '
       { a[NR] = $0 } END { for (i = 1; i <= NR; i++) printf "%s%s", (i == 1 ? "" : (i == NR ? " and " : ", ")), a[i] }')
     text="$(_ds_voice_count_word "$n") sessions need you: $names."

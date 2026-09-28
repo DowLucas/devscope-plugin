@@ -12,7 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a permission prompt or question, 10 s for a failed turn, optionally 2 min for
   a finished turn. Answer in time and it stays silent; otherwise it reminds you
   every 5 min, up to 3 times. Works across all your sessions: announcements
-  never overlap, and three or more at once become one sentence. The sentence
+  never overlap, and three or more falling due within 15 s become one
+  sentence. The sentence
   comes from the server's `/api/ai/voice-summary` and follows your privacy
   mode (standard sends no more than its events do; `private` never leaves the
   machine and uses a local template, as does any server failure). Speaks with
