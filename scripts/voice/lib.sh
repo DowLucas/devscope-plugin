@@ -38,6 +38,9 @@ DS_VOICE_SPEAK_TIMEOUT=30
 DS_VOICE_SERVER_VOICE=am_michael
 DS_VOICE_SERVER_SPEED=1.5
 DS_VOICE_SERVER_TIMEOUT=20
+# Gemini takes ~3 s warm for a summary; this runs in the background timer, so
+# waiting longer costs the user nothing and avoids falling back to the template.
+DS_VOICE_SUMMARY_TIMEOUT=10
 
 # State and log can hold summaries of the user's work: keep them owner-only.
 _ds_voice_mkdirs() {
@@ -312,7 +315,7 @@ _ds_voice_text() {
   if [ "$privacy" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ]; then
     body=$(jq -c '{trigger: .type, project: .project, tool: .tool, detail: .detail, last_message: .lastMessage}
                   | with_entries(select(.value != ""))' "$f" 2>/dev/null)
-    text=$(_ds_api POST /api/ai/voice-summary "$body" 4 | jq -r '.text // empty' 2>/dev/null)
+    text=$(_ds_api POST /api/ai/voice-summary "$body" "$DS_VOICE_SUMMARY_TIMEOUT" | jq -r '.text // empty' 2>/dev/null)
   fi
   [ -n "$text" ] || text=$(_ds_voice_template "$type" "$project" "$tool")
   [ "$spoken" -gt 0 ] 2>/dev/null && text="Still waiting. $text"
@@ -417,9 +420,11 @@ _ds_voice_with_lock() {
 _ds_voice_server() {  # text privacy
   local wav body code rc cfg=""
   [ "${2:-standard}" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ] || return 1
+  # volume is only sent when set, so the server's default applies otherwise.
   body=$(jq -nc --arg t "$1" --arg v "$(_ds_voice_conf .voice "$DS_VOICE_SERVER_VOICE")" \
     --argjson s "$(_ds_voice_conf .speed "$DS_VOICE_SERVER_SPEED")" \
-    '{text: $t, voice: $v, speed: $s}' 2>/dev/null) || return 1
+    --arg vol "$(_ds_voice_conf .volume "")" \
+    '{text: $t, voice: $v, speed: $s} + (if $vol == "" then {} else {volume: ($vol | tonumber)} end)' 2>/dev/null) || return 1
   wav="$(mktemp "${TMPDIR:-/tmp}/ds-voice.XXXXXX")" || return 1
   cfg="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
   code=$(printf '%s' "$cfg" | curl --config - -s -o "$wav" -w '%{http_code} %{content_type}' \

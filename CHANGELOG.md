@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.21.1] - 2026-09-28
+
+### Fixed
+- AI summaries were often replaced by the plain template: the summary call gave
+  up after 4 s, and Gemini takes about 3 s even when warm. It now waits up to
+  10 s (in the background timer, so nothing waits on it).
+
+### Added
+- `volume` in `voice.json` (0.5-3) for the server voice. Unset, the server's
+  default applies, now twice as loud as before.
+
 ## [0.21.0] - 2026-09-28
 
 ### Added

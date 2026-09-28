@@ -163,8 +163,9 @@ configure; respond "RIFFfake" "audio/wav"; reset_hits
 [ "$(server_speak standard)" = "0 RIFFfake" ] && ok "server voice: plays the returned audio" || bad "server play" "$(server_speak standard)"
 [ "$(last .path)" = "/api/ai/voice-audio" ] && [ "$(last .key)" = "test-key" ] && ok "server voice: calls voice-audio with the API key" || bad "server path" "$(last .)"
 [ "$(last .body.text)/$(last .body.voice)/$(last .body.speed)" = "cloud needs you/am_michael/1.5" ] && ok "server voice: default am_michael at 1.5x" || bad "server body" "$(last .body)"
-configure '.voice = "af_heart" | .speed = 1.2'
-server_speak standard >/dev/null; [ "$(last .body.voice)/$(last .body.speed)" = "af_heart/1.2" ] && ok "server voice: voice and speed from voice.json" || bad "server config" "$(last .body)"
+[ "$(last .body.volume)" = "null" ] && ok "server voice: volume left to the server by default" || bad "server volume default" "$(last .body)"
+configure '.voice = "af_heart" | .speed = 1.2 | .volume = 2.5'
+server_speak standard >/dev/null; [ "$(last .body.voice)/$(last .body.speed)/$(last .body.volume)" = "af_heart/1.2/2.5" ] && ok "server voice: voice, speed and volume from voice.json" || bad "server config" "$(last .body)"
 configure; reset_hits
 [ "$(server_speak private)" = "1 " ] && [ "$(hits)" = 0 ] && ok "server voice: never for private sessions" || bad "server private" "hits=$(hits)"
 respond '{"error":"Server voice unavailable"}' "application/json" 503
