@@ -104,9 +104,10 @@ wait_spoken 1 5 && [ "$(spoken)" = "o x needs permission to use Bash." ] && ok "
 [ "$(stat -c %a "$HOME/.cache/devscope/voice" 2>/dev/null || stat -f %Lp "$HOME/.cache/devscope/voice")" = 700 ] && ok "voice dir is 0700" || bad "perms" "$(ls -ld "$HOME/.cache/devscope/voice")"
 
 # 7. Three sessions due together are one sentence.
-configure '.delays.permission = 3'; reset
+# Long enough that slow CI runners arm all three before the first is due.
+configure '.delays.permission = 10'; reset
 for p in alpha beta gamma; do DEVSCOPE_PRIVACY=private hook permission-request.sh "b-$p" "/work/$p" "$PERM"; done
-wait_spoken 1 8; sleep 1.5
+wait_spoken 1 20; sleep 1.5
 [ "$(lines)" = 1 ] && spoken | grep -q "^three sessions need you: " && ok "three due sessions batch into one sentence" || bad "batch" "$(spoken)"
 
 # 8. Reminders repeat with a prefix, up to the maximum.
