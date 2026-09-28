@@ -4,7 +4,8 @@
 
 Answers every request with the body in DIR/resp (sleeping 5 s first if
 DIR/slow exists), appends one byte per request to DIR/hits, and writes the
-last request's path, API key and JSON body to DIR/last. POSTs without the
+last request's path, API key and JSON body to DIR/last, and appends each
+path to DIR/paths. POSTs without the
 x-requested-with header get 403, like the backend's CSRF middleware.
 """
 import json, os, sys, time
@@ -28,6 +29,7 @@ class H(BaseHTTPRequestHandler):
         if method == "POST" and self.headers.get("x-requested-with") != "devscope-cli":
             return self.reply(403, '{"error":"Missing x-requested-with header"}')
         open(os.path.join(d, "hits"), "a").write("x")
+        open(os.path.join(d, "paths"), "a").write(self.path + "\n")
         with open(os.path.join(d, "last"), "w") as f:
             json.dump({"method": method, "path": self.path, "key": self.headers.get("x-api-key"),
                        "body": json.loads(raw) if raw else None}, f)

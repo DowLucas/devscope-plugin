@@ -20,6 +20,7 @@ jobs:
         run: |
           shellcheck --severity=warning -x \
             scripts/*.sh \
+            scripts/voice/*.sh \
             install.sh \
             tests/check-hooks-consistency.sh \
             tests/smoke/run.sh \
@@ -27,6 +28,7 @@ jobs:
             tests/hints/run.sh \
             tests/recall/run.sh \
             tests/errors/run.sh \
+            tests/voice/run.sh \
             tests/lib/stub.sh
 
   hooks-consistency:
@@ -68,6 +70,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run error recall hook tests (stub server, no backend required)
         run: bash tests/errors/run.sh
+
+  voice:
+    name: voice announcer test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run voice announcer tests (stub server, speech to a file)
+        run: bash tests/voice/run.sh
 
   smoke:
     name: smoke POST against fresh backend
