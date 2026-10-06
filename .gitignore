@@ -20,3 +20,6 @@ Thumbs.db
 
 # DevScope config (never commit credentials)
 config
+
+# Written by Claude Code when it loads a mod (types live in .claude-plugin/types, self-ignored)
+mods/*/tsconfig.json

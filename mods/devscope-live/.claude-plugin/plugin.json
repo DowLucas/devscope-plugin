@@ -1,0 +1,48 @@
+{
+  "name": "devscope-live",
+  "version": "0.1.0",
+  "description": "DevScope in the live session: team prompt suggestions, team skills, a stuck band, outcome labels and session-to-commit links",
+  "author": {
+    "name": "Lucas Dow",
+    "email": "lucdow7@gmail.com"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "nextPrompts": {
+      "type": "boolean",
+      "title": "Team prompt suggestions",
+      "description": "Suggest the next prompt that worked in similar sessions (yours and teammates who share theirs)",
+      "default": true
+    },
+    "teamSkills": {
+      "type": "boolean",
+      "title": "Team skills",
+      "description": "Offer your team's approved skills when a prompt matches one",
+      "default": true
+    },
+    "stuckBand": {
+      "type": "boolean",
+      "title": "Stuck band",
+      "description": "Show a band with options when Claude keeps failing the same way",
+      "default": true
+    },
+    "outcomeLabels": {
+      "type": "boolean",
+      "title": "Outcome labels",
+      "description": "Record whether turns worked, from your replies and an occasional question after long turns",
+      "default": true
+    },
+    "commitLinks": {
+      "type": "boolean",
+      "title": "Commit and PR links",
+      "description": "Record the commits and PRs a session makes, and whether its PRs merged (checked with gh)",
+      "default": true
+    },
+    "commitTrailer": {
+      "type": "boolean",
+      "title": "DevScope-Session trailer",
+      "description": "Add a DevScope-Session line to Claude's commit messages and PR descriptions",
+      "default": false
+    }
+  }
+}

@@ -18,6 +18,18 @@
       "source": "./",
       "category": "monitoring",
       "homepage": "https://github.com/DowLucas/devscope"
+    },
+    {
+      "name": "devscope-live",
+      "description": "DevScope in the live session: team prompt suggestions, team skills, a stuck band, outcome labels and session-to-commit links (Claude Code mod)",
+      "version": "0.1.0",
+      "author": {
+        "name": "Lucas Dow",
+        "email": "lucdow7@gmail.com"
+      },
+      "source": "./mods/devscope-live",
+      "category": "monitoring",
+      "homepage": "https://github.com/DowLucas/devscope"
     }
   ]
 }

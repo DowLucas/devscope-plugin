@@ -87,6 +87,18 @@ jobs:
       - name: Run voice announcer tests (stub server, speech to a file)
         run: bash tests/voice/run.sh
 
+  live-mod:
+    name: devscope-live mod
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Validate the mod (manifest, hooks module, state contract)
+        run: claude plugin validate mods/devscope-live
+      - name: Run the mod's tests against the engine
+        run: claude plugin test mods/devscope-live
+
   smoke:
     name: smoke POST against fresh backend
     runs-on: ubuntu-latest
