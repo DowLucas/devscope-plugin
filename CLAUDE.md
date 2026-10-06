@@ -19,8 +19,10 @@ hooks/
 commands/
   setup.md             # /devscope:setup slash command definition
   voice.md             # /devscope:voice (on/off/mute/test/setup)
+  backfill-usage.md    # /devscope:backfill-usage (exact usage for past sessions)
 scripts/
   _helpers.sh          # Shared helpers (config loading, SHA256, timestamps)
+  token_usage.py       # Exact per-model token totals from transcripts (Stop/SessionEnd, /devscope:backfill-usage)
   send-event.sh        # Core event sender (all hooks call this)
   session-start.sh     # SessionStart hook
   session-end.sh       # SessionEnd hook
@@ -181,6 +183,19 @@ claude plugin disable devscope@devscope                  # Disable
   no voice or is unreachable it falls back to Piper if installed (`/devscope:voice setup`),
   else `say`/`spd-say`/`espeak`. What is sent follows the
   privacy mode: `standard` sends no more than its events do. Tests: `tests/voice/run.sh`.
+
+## Token usage
+
+`response.complete` and `session.end` carry two usage fields:
+
+- `usageSnapshot` (0.23.0+): exact cumulative totals per model for the transcript and its
+  `<session>/subagents/*.jsonl`, from `scripts/token_usage.py`. Each API call is logged once
+  per content block, so calls are deduplicated by `message.id` (last line wins); entries from
+  another `sessionId` and `<synthetic>` messages are skipped. Parsing is incremental, with byte
+  offsets cached in `~/.cache/devscope/usage/<transcript>.json`. Tests: `tests/usage/run.sh`.
+- `tokenUsage`: the LAST API call's usage only (`_ds_extract_token_usage`). Not a running
+  total. Still sent because older servers read it and the server's estimator uses it as the
+  per-turn context size.
 
 ## Making Changes
 

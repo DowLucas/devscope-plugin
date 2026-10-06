@@ -7,7 +7,8 @@ DIR/slow exists), appends one byte per request to DIR/hits, and writes the
 last request's path, API key and JSON body to DIR/last, and appends each
 path to DIR/paths. DIR/status and DIR/ctype, when present, override the
 response status (200) and content type (application/json). POSTs without the
-x-requested-with header get 403, like the backend's CSRF middleware.
+x-requested-with header get 403, like the backend's CSRF middleware (which
+exempts /api/events).
 """
 import json, os, sys, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -27,7 +28,8 @@ class H(BaseHTTPRequestHandler):
 
     def handle_any(self, method):
         raw = self.rfile.read(int(self.headers.get("content-length", 0)))
-        if method == "POST" and self.headers.get("x-requested-with") != "devscope-cli":
+        # Like the backend's csrfMiddleware: event ingestion is exempt.
+        if method == "POST" and self.path != "/api/events" and self.headers.get("x-requested-with") != "devscope-cli":
             return self.reply(403, '{"error":"Missing x-requested-with header"}')
         open(os.path.join(d, "hits"), "a").write("x")
         open(os.path.join(d, "paths"), "a").write(self.path + "\n")
