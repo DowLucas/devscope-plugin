@@ -24,18 +24,12 @@ EXCLUDED=(
   "setup.sh"
   "queue.sh"
   "drain-queue.sh"
-  # PostModelSwitch exists at runtime but is NOT accepted by the hooks-config
-  # schema, so registering it makes Claude Code reject hooks.json *in its
-  # entirety* — every hook in this plugin stops loading. Kept on disk (with its
-  # smoke fixture and the backend's payload schema) so it can be wired in the
-  # day config registration is allowed; unwired until then. See EVENT_KEYS below.
-  "model-switch.sh"
 )
 
 # Hook event keys the Claude Code hooks-config schema accepts (verified against
-# 2.1.251). This is deliberately NOT the same as Claude Code's internal runtime
-# event list, which additionally contains PreModelSwitch and PostModelSwitch —
-# those fire internally but cannot be registered from hooks.json/settings.json.
+# 2.1.291). PostModelSwitch joined the accepted set after 2.1.251, which rejected
+# it. PreModelSwitch is left out: untested, and it gates the switch, so it must
+# never be registered anyway (see CLAUDE.md, Hook Selection Rule).
 #
 # Registering an unsupported key is not a partial failure: the whole file fails
 # schema validation and none of the plugin's hooks load. 0.15.0 shipped with
@@ -47,7 +41,7 @@ SUPPORTED_EVENTS=(
   SubagentStart SubagentStop PreCompact PostCompact PermissionRequest
   PermissionDenied Setup TeammateIdle TaskCreated TaskCompleted Elicitation
   ElicitationResult ConfigChange WorktreeCreate WorktreeRemove InstructionsLoaded
-  CwdChanged FileChanged DirectoryAdded MessageDisplay
+  CwdChanged FileChanged DirectoryAdded MessageDisplay PostModelSwitch
 )
 
 if [ ! -f "$HOOKS_JSON" ]; then

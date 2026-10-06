@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.23.0] - 2026-10-06
+
+### Added
+- **Model switches are recorded.** `PostModelSwitch` is registered again and
+  sends `model.switch` (from/to model, requested model, source, context tokens,
+  whether the prompt cache was warm). 0.15.1 unregistered it because Claude Code
+  2.1.251 rejected the key; 2.1.291 accepts it and fires the hook, checked with
+  a test plugin.
+
+### Changed
+- **Requires a Claude Code that accepts `PostModelSwitch` in `hooks.json`**
+  (2.1.291 does; 2.1.251 does not). On an older Claude Code the whole
+  `hooks.json` fails to load and no DevScope hook runs; update Claude Code.
+
 ## [0.21.1] - 2026-09-28
 
 ### Fixed
