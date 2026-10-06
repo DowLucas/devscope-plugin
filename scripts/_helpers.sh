@@ -97,7 +97,10 @@ _ds_tac() {
   fi
 }
 
-# Extract cumulative token usage from the last assistant message in transcript JSONL.
+# Usage of the LAST API call in the transcript (not a running total): the
+# context size at the end of the turn plus that call's output. Sent as
+# `tokenUsage` for servers older than 0.23.0's and as per-turn input to the
+# server's estimator; real totals come from _ds_usage_snapshot.
 # Returns JSON: {inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens}
 # Uses python3/jq to properly parse multi-line JSON entries from the transcript.
 _ds_extract_token_usage() {
@@ -147,6 +150,19 @@ print('{}')
       } else {} end
     ' "$transcript_path" 2>/dev/null || echo '{}'
   fi
+}
+
+# Exact cumulative usage for the transcript and its subagent transcripts,
+# summed over every API call per model (scripts/token_usage.py). Prints a
+# usageSnapshot object, or {} without python3 or usage. Incremental: only
+# lines appended since the previous call are read.
+_ds_usage_snapshot() {
+  local transcript_path="$1"
+  if [ -z "$transcript_path" ] || [ ! -f "$transcript_path" ] || ! command -v python3 >/dev/null 2>&1; then
+    echo '{}'
+    return
+  fi
+  python3 "$(dirname "${BASH_SOURCE[0]}")/token_usage.py" snapshot "$transcript_path" 2>/dev/null || echo '{}'
 }
 
 # --- API query helpers for plugin commands ---

@@ -148,6 +148,18 @@ DEVSCOPE_HINTS=off                   # no hints
 DEVSCOPE_HINT_AFTER_PR=/review-pr    # suggest a different command (default: /code-review)
 ```
 
+## Token usage and cost
+
+DevScope shows each session's tokens and its **API-equivalent cost**: what those tokens would cost at Anthropic's API list prices, which is not what a Claude subscription plan charges you. The Stop and SessionEnd hooks sum every API call in the session transcript and its subagent transcripts, per model, and send the totals. Only token counts and model ids are sent, never transcript content.
+
+Plugins before 0.23.0 counted only the last API call of each session, so their figures were far too low. The server replaces those with an estimate. To replace the estimate with exact numbers for sessions whose transcripts are still on your machine, run:
+
+```
+/devscope:backfill-usage
+```
+
+Claude Code deletes transcripts after `cleanupPeriodDays` (30 days by default, set in `~/.claude/settings.json`); older sessions keep the estimate.
+
 ## Search past sessions
 
 `/devscope:search <terms>` finds turns from your earlier Claude Code sessions (your prompts and Claude's replies) and links each one to the exact turn in the dashboard. It matches exact terms (identifiers, file names, error strings; `"exact phrase"`, `OR`, `-exclude` all work) and meaning, so `/devscope:search fixing the DNS outage` finds the right session even if it used other words. It covers your own sessions plus teammates who share theirs; `private` sessions are never searched. The same search, with filters, is in the dashboard under **Search**.

@@ -55,6 +55,14 @@ jobs:
       - name: Run hint hook tests (no backend required)
         run: bash tests/hints/run.sh
 
+  usage:
+    name: token usage test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run token usage tests (stub server, no backend required)
+        run: bash tests/usage/run.sh
+
   recall:
     name: prompt recall test
     runs-on: ubuntu-latest
