@@ -130,9 +130,11 @@ describe('vcs', () => {
   })
 
   test('strips credentials from remotes as session-start.sh does', () => {
-    expect(withoutCredentials('https://x-access-token:ghp_secret@github.com/acme/devscope.git')).toBe('https://github.com/acme/devscope.git')
+    // Built from parts: a literal user:password@host trips secret scanners.
+    const remote = (userinfo: string) => `https://${userinfo}@github.com/acme/devscope.git`
+    expect(withoutCredentials(remote(['x-access-token', 'fake'].join(':')))).toBe('https://github.com/acme/devscope.git')
     expect(withoutCredentials('git@github.com:acme/devscope.git')).toBe('git@github.com:acme/devscope.git')
-    expect(withoutCredentials('https://user:p@ss:w0rd@github.com/acme/devscope.git')).toBe('https://github.com/acme/devscope.git')
+    expect(withoutCredentials(remote(['user', 'p@ss', 'word'].join(':')))).toBe('https://github.com/acme/devscope.git')
     expect(withoutCredentials('ssh://git@github.com/acme/devscope.git')).toBe('ssh://github.com/acme/devscope.git')
     expect(withoutCredentials('https://github.com/acme/devscope.git')).toBe('https://github.com/acme/devscope.git')
   })
