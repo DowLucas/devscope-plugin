@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Band, StuckNudge } from '../types'
-import { parseConfig, readOptions, resolveConfig } from './config'
+import { UNREADABLE_CONFIG, parseConfig, readOptions, resolveConfig } from './config'
 import type { Config, Options } from './config'
 import { implicitLabel, shouldAsk } from './labels'
 import type { Label } from './labels'
@@ -39,7 +39,11 @@ async function readConfig($: EngineInterface): Promise<Config> {
   }
   const configHome =
     (await $.env.get('XDG_CONFIG_HOME')) || `${(await $.env.get('HOME')) ?? ''}/.config`
-  const file = await $.fs.read(`${configHome}/devscope/config`).then(parseConfig, () => ({}))
+  const path = `${configHome}/devscope/config`
+  // No file means defaults. A file that exists but can't be read might say
+  // `private`, so it is taken to (the environment still wins, as in bash).
+  const exists = await $.fs.exists(path).catch(() => true)
+  const file = exists ? await $.fs.read(path).then(parseConfig, () => UNREADABLE_CONFIG) : {}
   return resolveConfig(env, file)
 }
 

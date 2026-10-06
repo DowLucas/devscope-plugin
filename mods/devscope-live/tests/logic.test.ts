@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { parseConfig, readOptions, resolveConfig } from '../hooks/config'
+import { UNREADABLE_CONFIG, parseConfig, readOptions, resolveConfig } from '../hooks/config'
 import { implicitLabel, shouldAsk } from '../hooks/labels'
 import { basename, nextPromptsBody } from '../hooks/suggestions'
 import { matchSkill } from '../hooks/teamSkills'
@@ -32,6 +32,11 @@ describe('config', () => {
     expect(parseConfig('DEVSCOPE_PRIVACY="private\n').DEVSCOPE_PRIVACY).toBe('private')
     expect(parseConfig("DEVSCOPE_PRIVACY='private\n").DEVSCOPE_PRIVACY).toBe('private')
     expect(parseConfig('DEVSCOPE_PRIVACY = private \n').DEVSCOPE_PRIVACY).toBe('private')
+  })
+
+  test('an unreadable config file means private unless the environment says otherwise', () => {
+    expect(resolveConfig({}, UNREADABLE_CONFIG).privacy).toBe('private')
+    expect(resolveConfig({ privacy: 'open' }, UNREADABLE_CONFIG).privacy).toBe('open')
   })
 
   test('unknown privacy values fall back to standard', () => {
@@ -127,6 +132,9 @@ describe('vcs', () => {
   test('strips credentials from remotes as session-start.sh does', () => {
     expect(withoutCredentials('https://x-access-token:ghp_secret@github.com/acme/devscope.git')).toBe('https://github.com/acme/devscope.git')
     expect(withoutCredentials('git@github.com:acme/devscope.git')).toBe('git@github.com:acme/devscope.git')
+    expect(withoutCredentials('https://user:p@ss:w0rd@github.com/acme/devscope.git')).toBe('https://github.com/acme/devscope.git')
+    expect(withoutCredentials('ssh://git@github.com/acme/devscope.git')).toBe('ssh://github.com/acme/devscope.git')
+    expect(withoutCredentials('https://github.com/acme/devscope.git')).toBe('https://github.com/acme/devscope.git')
   })
 
   test('maps gh pr view output', () => {

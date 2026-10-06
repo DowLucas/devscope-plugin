@@ -43,6 +43,8 @@ function setup(on: On, env: Record<string, string> = {}) {
     return { value: undefined }
   })
   on('session.cwd', () => ({ value: '/work/devscope' }))
+  // No ~/.config/devscope/config: the environment above is the whole config.
+  on('fs.exists', () => ({ value: false }))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
@@ -274,6 +276,24 @@ describe('#2 team prompts', () => {
     await clock.advance(1)
     await $.prompt.suggest({ text: 'engine guess', origin: { kind: 'suggestion' } })
     expect(seen.suggested.at(-1)).toBe('team step')
+  })
+})
+
+describe('privacy', () => {
+  test('a config file that exists but cannot be read is taken as private', async ($, on) => {
+    mock.env(on, { DEVSCOPE_URL: URL_BASE, DEVSCOPE_API_KEY: 'key', HOME: '/home/test' })
+    mock.store(on)
+    on('session.start', (_$, e) => ({ cwd: e.cwd }))
+    on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
+    on('session.id', () => ({ value: 'cc-session-1' }))
+    on('fs.exists', () => ({ value: true }))
+    on('fs.read', () => ({ deny: 'permission denied' }))
+    const calls = backend(on)
+    const clock = mock.clock(on)
+    await $.prompt.submit(typed('first'))
+    await $.prompt.submit(typed("that didn't work"))
+    await clock.advance(10)
+    expect(posts(calls, '/api/live/labels')).toEqual([])
   })
 })
 

@@ -48,6 +48,9 @@ export function resolveConfig(
   }
 }
 
+/** What a config file that exists but can't be read is taken to say. */
+export const UNREADABLE_CONFIG: Record<string, string> = { DEVSCOPE_PRIVACY: 'private' }
+
 /**
  * `KEY=value` lines read as _helpers.sh reads them, so both plugins agree on
  * the privacy mode: `#` lines skipped, spaces dropped from the key, one

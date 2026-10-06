@@ -13,8 +13,12 @@ const EXACT_PR_URL = new RegExp(`^${PR_URL.source}$`)
  */
 export const isPrUrl = (ref: string) => EXACT_PR_URL.test(ref)
 
-/** A remote URL without embedded credentials, as session-start.sh sends it. */
-export const withoutCredentials = (remote: string) => remote.replace(/:\/\/[^@/]+@/, '://')
+/**
+ * A remote URL without embedded credentials: everything up to the last `@`
+ * of a `scheme://` URL's authority goes, so a password holding `@` or `:`
+ * can't survive in part. An scp-style `git@host:path` keeps its user.
+ */
+export const withoutCredentials = (remote: string) => remote.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/]*@/i, '$1')
 
 /** The commit or PR a successful Bash call made, read from its output. */
 export function linkFromBash(command: string, stdout: string): VcsLink | undefined {
