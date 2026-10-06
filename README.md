@@ -164,6 +164,36 @@ Claude Code deletes transcripts after `cleanupPeriodDays` (30 days by default, s
 
 `/devscope:search <terms>` finds turns from your earlier Claude Code sessions (your prompts and Claude's replies) and links each one to the exact turn in the dashboard. It matches exact terms (identifiers, file names, error strings; `"exact phrase"`, `OR`, `-exclude` all work) and meaning, so `/devscope:search fixing the DNS outage` finds the right session even if it used other words. It covers your own sessions plus teammates who share theirs; `private` sessions are never searched. The same search, with filters, is in the dashboard under **Search**.
 
+## DevScope Live (in-session mod)
+
+`devscope-live` is a second, optional plugin in this marketplace. It is a
+Claude Code *mod* (function hooks, early access, Claude Code 2.1.291 or newer)
+that brings DevScope into the live session:
+
+- **Team prompts**: after a turn, the next prompt that worked in similar
+  sessions (yours, and teammates who share theirs) appears as ghost text in the
+  prompt box. Tab takes it.
+- **Team skills**: when a prompt matches one of your team's approved skills,
+  you're asked whether to use it. Choosing it attaches the skill to that prompt.
+- **Stuck band**: when Claude keeps failing the same way, a band above the
+  prompt offers *Step back* (interrupt and ask Claude to reassess), *Stop* or
+  *Keep going*.
+- **Outcome labels**: replies like "that didn't work" or "thanks" label the
+  previous turn, and a long turn ends with "Did that work?". This tells DevScope
+  which work actually succeeded.
+- **Commit and PR links**: commits and PRs a session makes are recorded against
+  it, and whether its PRs merged is checked with your own `gh`. An optional
+  `DevScope-Session:` trailer (off by default) marks Claude's commits and PRs.
+
+```bash
+/plugin install devscope-live@devscope
+```
+
+It reads the same `DEVSCOPE_URL`, `DEVSCOPE_API_KEY` and `DEVSCOPE_PRIVACY`
+settings. In `private` mode it sends no content or repository data. Each
+feature can be turned off in `/config` under the plugin's options. The
+`devscope` plugin is still what records your sessions; the mod only adds to it.
+
 ## Voice announcements
 
 Running several sessions, or working in another window? `/devscope:voice on` makes DevScope tell you out loud when a session has been waiting on you for a while:

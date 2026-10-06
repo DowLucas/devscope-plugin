@@ -49,7 +49,38 @@ scripts/
   setup.sh             # Interactive setup (used by install.sh) — NOT a hook
   voice/               # Voice announcer: lib.sh (arm/clear/announce), timer.sh, cli.sh
 install.sh             # One-liner installer with gum UI
+mods/devscope-live/    # Second plugin: a Claude Code mod (see below)
+docs/specs/            # Design specs
 ```
+
+## DevScope Live mod (`mods/devscope-live`)
+
+A separate plugin in the same marketplace (`source: ./mods/devscope-live`), built on
+Claude Code's function hooks ("mods", early access; verified on 2.1.291). Design and the
+`/api/live` backend contract: `docs/specs/2026-10-06-devscope-live-design.md`. It adds
+in-session features (team prompts, team skills, stuck band, outcome labels, commit/PR
+links); the Bash plugin still ships all events. It has its own version in its
+`plugin.json` and its `marketplace.json` entry (keep both in sync); changing it does not
+require bumping the `devscope` plugin.
+
+```bash
+claude plugin validate mods/devscope-live   # what the engine would refuse
+claude plugin test mods/devscope-live       # tests/*.test.ts(x) against the engine
+```
+
+Rules the engine enforces (learned the hard way):
+- `$` may only be passed to functions **declared at the top level of the same file**. All
+  I/O (`$.http`, `$.store`, `$.process`, ...) lives in `hooks/register.tsx`; the other
+  files in `hooks/` are pure logic, which is also what the logic tests import.
+- `$.http.fetch` has no timeout: race it with `$.clock.sleep`. Network work never runs
+  inside `session.start` (it would delay the first prompt): schedule it with
+  `$.clock.after(0, ...)`.
+- Gating hooks (`prompt.submit`, `tool.call`) carry `.catch(($, e, next) => next(e))` so a
+  failure lets the call through without running it twice.
+- In tests, every event the test raises needs a stand-in beneath the plugin
+  (`on('prompt.submit', ...)`, `on('session.cwd', ...)`, ...), each event hooked once and
+  before the test's first `$` call; events take their full input (`origin`, `wait`).
+  `mock.clock` starts near 0, so "last time" defaults must be `-Infinity`, not 0.
 
 ## Hook Selection Rule
 
