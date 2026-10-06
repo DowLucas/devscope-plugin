@@ -5,6 +5,16 @@ const PR_CREATE = /\bgh\s+pr\s+create\b/
 /** `git commit` prints `[branch 1a2b3c4] subject` (or `[main (root-commit) 1a2b3c4]`). */
 const COMMIT_SHA = /^\[[^\]\n]*?\b([0-9a-f]{7,40})\]/m
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
+const EXACT_PR_URL = new RegExp(`^${PR_URL.source}$`)
+
+/**
+ * Whether `ref` is exactly a GitHub PR URL. Refs come back from the backend
+ * and become `gh` arguments, so nothing else (an option, a path) may pass.
+ */
+export const isPrUrl = (ref: string) => EXACT_PR_URL.test(ref)
+
+/** A remote URL without embedded credentials, as session-start.sh sends it. */
+export const withoutCredentials = (remote: string) => remote.replace(/:\/\/[^@/]+@/, '://')
 
 /** The commit or PR a successful Bash call made, read from its output. */
 export function linkFromBash(command: string, stdout: string): VcsLink | undefined {

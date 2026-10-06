@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Band, StuckNudge } from '../types'
 import { parseConfig, readOptions, resolveConfig } from './config'
@@ -8,15 +8,17 @@ import { implicitLabel, shouldAsk } from './labels'
 import type { Label } from './labels'
 import { STEP_BACK_PROMPT, basename, nextPromptsBody } from './suggestions'
 import type { Suggestion } from './suggestions'
-import { USE_IT, matchSkill, skillContext } from './teamSkills'
+import { USE_IT, matchSkill, skillContext, skillLabel } from './teamSkills'
 import type { TeamSkill } from './teamSkills'
-import { linkFromBash, parseGhPr, withTrailer } from './vcs'
+import { isPrUrl, linkFromBash, parseGhPr, withTrailer, withoutCredentials } from './vcs'
 
 const band = atom({ plugin: 'devscope-live', key: 'band' } as const, null as Band)
 
 /** `$.http.fetch` has no timeout of its own; past this a request is given up on. */
 const REQUEST_TIMEOUT_MS = 5000
-/** The backend trips its friction rules off the same failure; give that event time to land. */
+/** Better Auth's per-key window resets once the key has been idle a full second. */
+const RATE_LIMIT_RETRY_MS = 1500
+/** The Bash plugin posts the failure event in the background; give it time to land. */
 const NUDGE_DELAY_MS = 2500
 /** A team suggestion replaces the engine's own guess for this long after it arrives. */
 const SUGGESTION_FRESH_MS = 60_000
@@ -54,14 +56,22 @@ async function request<T>($: EngineInterface, method: 'GET' | 'POST', path: stri
     const headers: Record<string, string> = { 'x-requested-with': 'devscope-live' }
     if (apiKey) headers['x-api-key'] = apiKey
     if (body !== undefined) headers['content-type'] = 'application/json'
-    const response = await Promise.race([
-      $.http.fetch(`${url}${path}`, {
-        method,
-        headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
-      }),
-      $.clock.sleep(REQUEST_TIMEOUT_MS).then(() => undefined),
-    ])
+    const send = () =>
+      Promise.race([
+        $.http.fetch(`${url}${path}`, {
+          method,
+          headers,
+          body: body === undefined ? undefined : JSON.stringify(body),
+        }),
+        $.clock.sleep(REQUEST_TIMEOUT_MS).then(() => undefined),
+      ])
+    let response = await send()
+    // The API key's rate limit is shared with the Bash plugin's events: a write
+    // waits out the window and tries once more; a read just goes without.
+    if (response?.status === 429 && method === 'POST') {
+      await $.clock.sleep(RATE_LIMIT_RETRY_MS)
+      response = await send()
+    }
     return response?.ok ? (JSON.parse(response.text) as T) : undefined
   } catch {
     return undefined
@@ -82,7 +92,7 @@ let skills: TeamSkill[] = []
 const offered = new Set<string>()
 let lastAskAt = Number.NEGATIVE_INFINITY
 let suggestion: { text: string; at: number } | undefined
-let isNudgeQueued = false
+let nudgeCheck: Timer | undefined
 
 // ---- #3 team skills ----
 
@@ -99,7 +109,7 @@ async function loadTeamSkills($: EngineInterface): Promise<TeamSkill[]> {
 /** True only when the person picked "Use it"; dismissed or headless is a no. */
 async function offerSkill($: EngineInterface, skill: TeamSkill): Promise<boolean> {
   try {
-    return (await $.ui.ask(`Team skill "${skill.name}" covers this. Use it?`, [USE_IT, 'Not now'])) === USE_IT
+    return (await $.ui.ask(`Team skill "${skillLabel(skill)}" covers this. Use it?`, [USE_IT, 'Not now'])) === USE_IT
   } catch {
     return false
   }
@@ -146,6 +156,11 @@ async function sendLabel($: EngineInterface, turnStartedAt: string, label: Label
 
 // ---- #9 session ↔ commit links ----
 
+async function repoRemote($: EngineInterface): Promise<string | undefined> {
+  const remote = (await $.session.repo())?.remote
+  return remote ? withoutCredentials(remote) : undefined
+}
+
 /**
  * Settles the state of this repository's open PRs that past sessions made,
  * with the person's own `gh`, at most every 6 hours per repository. Silent
@@ -163,6 +178,7 @@ async function resolvePrs($: EngineInterface, remote: string) {
     `/api/live/vcs/open-prs?repo_remote=${encodeURIComponent(remote)}`,
   )
   for (const { ref } of Array.isArray(open?.prs) ? open.prs : []) {
+    if (typeof ref !== 'string' || !isPrUrl(ref)) continue
     const view = await $.process
       .run(['gh', 'pr', 'view', ref, '--json', 'state,mergedAt,closedAt'], { timeoutMs: 15_000 })
       .catch(() => undefined)
@@ -184,7 +200,7 @@ export const register: Register = (on, pluginOptions) => {
       void (async () => {
         if (options.teamSkills) skills = await loadTeamSkills($)
         if (await isPrivate($)) return
-        const remote = (await $.session.repo())?.remote
+        const remote = await repoRemote($)
         if (options.commitLinks && remote) await resolvePrs($, remote)
         if (options.nextPrompts && e.isInteractive) await proposeNextPrompt($, undefined)
       })()
@@ -233,10 +249,12 @@ export const register: Register = (on, pluginOptions) => {
     if (ran.deny !== undefined) return ran
     turn.toolCalls += 1
 
-    if (ran.isError === true && options.stuckBand && !isNudgeQueued) {
-      isNudgeQueued = true
-      $.clock.after(NUDGE_DELAY_MS, () => {
-        isNudgeQueued = false
+    // One check, after the last of a run of failures: the rule that raises
+    // the nudge trips on a later failure than the first.
+    if (ran.isError === true && options.stuckBand) {
+      nudgeCheck?.cancel()
+      nudgeCheck = $.clock.after(NUDGE_DELAY_MS, () => {
+        nudgeCheck = undefined
         void showPendingNudge($)
       })
     }
@@ -250,7 +268,7 @@ export const register: Register = (on, pluginOptions) => {
           await request($, 'POST', '/api/live/vcs', {
             session_id: await $.session.id(),
             ...link,
-            repo_remote: (await $.session.repo())?.remote ?? undefined,
+            repo_remote: await repoRemote($),
           })
         })()
       }

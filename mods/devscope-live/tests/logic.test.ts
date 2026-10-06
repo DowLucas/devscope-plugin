@@ -5,7 +5,7 @@ import { implicitLabel, shouldAsk } from '../hooks/labels'
 import { basename, nextPromptsBody } from '../hooks/suggestions'
 import { matchSkill } from '../hooks/teamSkills'
 import type { TeamSkill } from '../hooks/teamSkills'
-import { linkFromBash, parseGhPr, withTrailer } from '../hooks/vcs'
+import { isPrUrl, linkFromBash, parseGhPr, withTrailer, withoutCredentials } from '../hooks/vcs'
 
 const skill = (id: string, ...triggerPhrases: string[]): TeamSkill => ({
   id,
@@ -24,6 +24,14 @@ describe('config', () => {
   test('the environment wins over the file, as in _helpers.sh', () => {
     const config = resolveConfig({ url: 'http://env/', privacy: undefined }, { DEVSCOPE_URL: 'http://file', DEVSCOPE_PRIVACY: 'open' })
     expect(config).toEqual({ url: 'http://env', apiKey: undefined, privacy: 'open' })
+  })
+
+  test('reads the file exactly as the shell does, so private is never missed', () => {
+    // _helpers.sh keeps the first value of a key and strips quotes independently.
+    expect(parseConfig('DEVSCOPE_PRIVACY=private\nDEVSCOPE_PRIVACY=standard\n').DEVSCOPE_PRIVACY).toBe('private')
+    expect(parseConfig('DEVSCOPE_PRIVACY="private\n').DEVSCOPE_PRIVACY).toBe('private')
+    expect(parseConfig("DEVSCOPE_PRIVACY='private\n").DEVSCOPE_PRIVACY).toBe('private')
+    expect(parseConfig('DEVSCOPE_PRIVACY = private \n').DEVSCOPE_PRIVACY).toBe('private')
   })
 
   test('unknown privacy values fall back to standard', () => {
@@ -107,6 +115,18 @@ describe('vcs', () => {
   test('adds the trailer once', () => {
     expect(withTrailer('Co-Authored-By: C', 's1')).toBe('Co-Authored-By: C\nDevScope-Session: s1')
     expect(withTrailer(withTrailer('', 's1'), 's1')).toBe('DevScope-Session: s1')
+  })
+
+  test('only an exact GitHub PR URL may become a gh argument', () => {
+    expect(isPrUrl('https://github.com/acme/devscope/pull/7')).toBe(true)
+    expect(isPrUrl('--repo=evil/x')).toBe(false)
+    expect(isPrUrl('https://github.com/acme/devscope/pull/7 --web')).toBe(false)
+    expect(isPrUrl('https://evil.example/https://github.com/a/b/pull/1')).toBe(false)
+  })
+
+  test('strips credentials from remotes as session-start.sh does', () => {
+    expect(withoutCredentials('https://x-access-token:ghp_secret@github.com/acme/devscope.git')).toBe('https://github.com/acme/devscope.git')
+    expect(withoutCredentials('git@github.com:acme/devscope.git')).toBe('git@github.com:acme/devscope.git')
   })
 
   test('maps gh pr view output', () => {

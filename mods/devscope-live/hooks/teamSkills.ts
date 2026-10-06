@@ -30,10 +30,13 @@ export function matchSkill(prompt: string, skills: readonly TeamSkill[]): TeamSk
   return best?.skill
 }
 
+/** A skill's name as one short line, for the question and the context header. */
+export const skillLabel = (skill: TeamSkill) => skill.name.replace(/\s+/g, ' ').trim().slice(0, 100)
+
 /** What the model reads beside the prompt once the person chose the skill. */
 export function skillContext(skill: TeamSkill): string {
   return [
-    `DevScope: the user chose to apply their team's skill "${skill.name}" to this request. Follow it:`,
+    `DevScope: the user chose to apply their team's skill "${skillLabel(skill)}" to this request. Follow it:`,
     '',
     skill.content.slice(0, MAX_CONTENT_CHARS),
   ].join('\n')

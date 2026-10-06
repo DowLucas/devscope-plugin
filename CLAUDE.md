@@ -66,6 +66,7 @@ require bumping the `devscope` plugin.
 ```bash
 claude plugin validate mods/devscope-live   # what the engine would refuse
 claude plugin test mods/devscope-live       # tests/*.test.ts(x) against the engine
+# Loading the mod writes .claude-plugin/types/ (self-ignored) and tsconfig.json (ignored).
 ```
 
 Rules the engine enforces (learned the hard way):

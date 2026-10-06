@@ -98,8 +98,11 @@ describe('#9 commit and PR links', () => {
 
   test('settles open PRs with gh at session start', async ($, on) => {
     const { clock, seen } = setup(on)
-    const calls = backend(on, { 'GET /api/live/vcs/open-prs': { prs: [{ ref: 'https://github.com/acme/devscope/pull/7' }] } })
-    on('process.run', (_$, e) => ({
+    const calls = backend(on, {
+      'GET /api/live/vcs/open-prs': { prs: [{ ref: '--repo=evil/x' }, { ref: 'https://github.com/acme/devscope/pull/7' }] },
+    })
+    const ran: string[][] = []
+    on('process.run', (_$, e) => (ran.push([...e.argv]), {
       value: {
         exitCode: 0,
         stdout: e.argv.includes('https://github.com/acme/devscope/pull/7') ? '{"state":"MERGED","mergedAt":"2026-10-01T10:00:00Z","closedAt":null}' : '',
@@ -110,6 +113,8 @@ describe('#9 commit and PR links', () => {
     }))
     await $.session.start({ ...SESSION, isInteractive: false })
     await clock.advance(1)
+    // A ref that isn't exactly a PR URL never reaches gh.
+    expect(ran.map(argv => argv[3])).toEqual(['https://github.com/acme/devscope/pull/7'])
     expect(posts(calls, '/api/live/vcs/status')[0]?.body).toEqual({
       ref: 'https://github.com/acme/devscope/pull/7',
       state: 'merged',
@@ -183,6 +188,24 @@ describe('#6 stuck band', () => {
     await after.unmount()
   })
 
+  test('checks once, after the last of a run of failures', async ($, on) => {
+    const { clock } = setup(on)
+    // The friction rule only trips on the third failure.
+    let failures = 0
+    const calls = backend(on)
+    on('tool.call', { tool: 'Bash' }, () => {
+      failures += 1
+      return { result: { stdout: '', stderr: 'FAIL' }, isError: true }
+    })
+    for (let i = 0; i < 3; i++) {
+      await $.tool.call({ tool: 'Bash', command: 'bun test' })
+      await clock.advance(1000)
+    }
+    await clock.advance(2500)
+    expect(failures).toBe(3)
+    expect(calls.filter(c => c.path.startsWith('/api/live/nudge'))).toHaveLength(1)
+  })
+
   test('Step back interrupts the turn and asks Claude to reassess', async ($, on) => {
     const { clock, seen } = setup(on)
     backend(on, { 'GET /api/live/nudge': { nudge: { rule: 'repeated_failure', severity: 'warning', message: 'stuck' } } })
@@ -227,7 +250,7 @@ describe('#2 team prompts', () => {
   test('proposes the next prompt that worked after a similar one', async ($, on) => {
     const { clock, seen } = setup(on)
     const calls = backend(on, {
-      'POST /api/live/next-prompts': { suggestions: [{ text: 'now run the integration tests', project: 'devscope', sessionTitle: null, toolCalls: 4, label: 'up' }] },
+      'POST /api/live/next-prompts': { suggestions: [{ text: 'now run the integration tests', project: 'devscope' }] },
     })
     await $.prompt.submit(typed('add a migration for turn labels'))
     await $.turn.start({ text: '', turnId: 't1' })
@@ -245,12 +268,29 @@ describe('#2 team prompts', () => {
 
   test('replaces the engine guess with the fresh team suggestion', async ($, on) => {
     const { clock, seen } = setup(on)
-    backend(on, { 'POST /api/live/next-prompts': { suggestions: [{ text: 'team step', project: null, sessionTitle: null, toolCalls: 1, label: null }] } })
+    backend(on, { 'POST /api/live/next-prompts': { suggestions: [{ text: 'team step', project: 'devscope' }] } })
     await $.prompt.submit(typed('something'))
     await $.turn.complete({ answer: '', durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' })
     await clock.advance(1)
     await $.prompt.suggest({ text: 'engine guess', origin: { kind: 'suggestion' } })
     expect(seen.suggested.at(-1)).toBe('team step')
+  })
+})
+
+describe('rate limit', () => {
+  test('a write retries once after a 429', async ($, on) => {
+    const { clock } = setup(on)
+    let attempts = 0
+    on('http.fetch', () => {
+      attempts += 1
+      return attempts === 1
+        ? { value: { status: 429, ok: false, headers: {}, text: '' } }
+        : { value: { status: 200, ok: true, headers: {}, text: '{"ok":true}' } }
+    })
+    await $.prompt.submit(typed('first'))
+    await $.prompt.submit(typed("that didn't work"))
+    await clock.advance(2000)
+    expect(attempts).toBe(2)
   })
 })
 

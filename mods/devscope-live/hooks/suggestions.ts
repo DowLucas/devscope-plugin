@@ -1,11 +1,5 @@
 /** One proposal from `POST /api/live/next-prompts`. */
-export type Suggestion = {
-  text: string
-  project: string | null
-  sessionTitle: string | null
-  toolCalls: number
-  label: string | null
-}
+export type Suggestion = { text: string; project: string }
 
 /**
  * The request for the next prompt that worked after a similar one (`after`),

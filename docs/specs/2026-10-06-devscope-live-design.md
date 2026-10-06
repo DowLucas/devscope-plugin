@@ -52,7 +52,7 @@ missing and not owned).
   Takes (returns and clears) the nudge the event ingestion recorded for that
   session; a nudge older than 2 minutes is dropped.
 - `POST /api/live/next-prompts` `{ session_id, after?: string (≤ 4000), project?: string, limit?: 1-5 }`
-  → `{ suggestions: [{ text, project, sessionTitle, toolCalls, label }] }`
+  → `{ suggestions: [{ text, project }] }`
   With `after`: embed it, find similar human-origin turns (searchable scope,
   other sessions), and propose the next human turn of each such session when
   that turn had no tool failures and is not labelled `down`; ranked by

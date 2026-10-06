@@ -48,16 +48,28 @@ export function resolveConfig(
   }
 }
 
-/** `KEY=value` lines; `#` comments and blank lines skipped, one pair of quotes stripped. */
+/**
+ * `KEY=value` lines read as _helpers.sh reads them, so both plugins agree on
+ * the privacy mode: `#` lines skipped, spaces dropped from the key, one
+ * leading and one trailing `"` then `'` stripped from the value, and the
+ * first value of a key wins. Trimming the value too only ever makes a
+ * `private` setting match where the shell's would not.
+ */
 export function parseConfig(text: string): Record<string, string> {
   const values: Record<string, string> = {}
   for (const line of text.split('\n')) {
     if (line.startsWith('#')) continue
     const at = line.indexOf('=')
     if (at < 0) continue
-    const key = line.slice(0, at).replace(/\s/g, '')
-    const value = line.slice(at + 1).trim().replace(/^(["'])(.*)\1$/, '$2')
-    if (key) values[key] = value
+    const key = line.slice(0, at).replace(/ /g, '')
+    const value = line
+      .slice(at + 1)
+      .replace(/^"/, '')
+      .replace(/"$/, '')
+      .replace(/^'/, '')
+      .replace(/'$/, '')
+      .trim()
+    if (key && !(key in values)) values[key] = value
   }
   return values
 }
