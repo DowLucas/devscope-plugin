@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.25.1] - 2026-10-07
+
+### Changed
+- **Clearer pronunciation of technical terms.** Explanations are written for
+  the voice: acronyms said letter by letter stay in capitals (API, CLI, PR),
+  the rest are spelled as said ("jay-son", "the readme", "five seconds",
+  "version two point one"), and identifiers, file names and flags are
+  described rather than read out. The DevScope server now also rewrites every
+  text it voices the same way (DowLucas/devscope).
+
 ## [0.25.0] - 2026-10-07
 
 ### Added
