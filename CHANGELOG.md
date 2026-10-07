@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.25.0] - 2026-10-07
+
+### Added
+- **`/devscope:voice verbosity [explain|auto] short|normal|long`**: how detailed
+  spoken responses are. Auto voice: one sentence, two or three (default), or
+  four to six. Explain: about 40 seconds, a minute and a half (default), or three
+  minutes, with a written card to match. Without a mode it sets both; plain
+  `verbosity` shows them. `explain --short <topic>` / `--long` overrides it for
+  one explanation. Auto voice's `long` needs a DevScope server with reply
+  lengths (DowLucas/devscope); older servers give the normal length.
+
 ## [0.24.2] - 2026-10-07
 
 ### Fixed

@@ -107,6 +107,14 @@ _ds_voice_replies_on() {
   [ -f "$DS_VOICE_CONFIG" ] && [ "$(_ds_voice_conf .speak_replies false)" = "true" ]
 }
 
+# How detailed spoken output is, per mode (explain, auto): short | normal | long.
+# voice.json `verbosity: {explain, auto}`; anything else reads as normal.
+_ds_voice_verbosity() {  # explain|auto
+  local v
+  v=$(_ds_voice_conf ".verbosity.$1" normal)
+  case "$v" in short|normal|long) printf '%s' "$v" ;; *) printf normal ;; esac
+}
+
 _ds_voice_muted() {
   [ "$(_ds_voice_int .mute_until 0)" -gt "$(date +%s)" ]
 }
@@ -265,8 +273,9 @@ _ds_voice_reply_text() {  # job-file
   read -r privacy < <(jq -r '.privacy' "$1" 2>/dev/null) || return 1
   project=$(jq -r '.project' "$1" 2>/dev/null)
   if [ "$privacy" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ]; then
-    body=$(jq -c '{trigger: "reply", project: .project, last_message: .lastMessage}
-                  | with_entries(select(.value != ""))' "$1" 2>/dev/null)
+    body=$(jq -c --arg length "$(_ds_voice_verbosity auto)" \
+      '{trigger: "reply", project: .project, last_message: .lastMessage, length: $length}
+       | with_entries(select(.value != ""))' "$1" 2>/dev/null)
     if printf '%s' "$body" | jq -e '.last_message' >/dev/null 2>&1; then
       text=$(_ds_api POST /api/ai/voice-summary "$body" "$DS_VOICE_SUMMARY_TIMEOUT" | jq -r '.text // empty' 2>/dev/null)
     fi

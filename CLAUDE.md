@@ -223,6 +223,10 @@ claude plugin disable devscope@devscope                  # Disable
   and speaks under the lock; a newer reply from the same session replaces an older one.
   This deliberately sends response text in `standard` mode too: the user turned the
   feature on for exactly that, and the endpoint stores nothing.
+- **Verbosity** (`/devscope:voice verbosity`, voice.json `verbosity: {explain, auto}`: short |
+  normal | long). Auto voice sends it as `length` with the `reply` summary request. Explain
+  mode reads it inline (`` !`cli.sh verbosity explain` `` in commands/voice.md) and its level
+  table sets the script's word count and card size; `--short` / `--long` override it.
 - **Long speech** (`/devscope:voice explain` → `cli.sh say`, text on stdin): `speak.sh say` speaks
   it detached via `_ds_voice_speak_long`, which splits it into pieces of at most 400
   characters (first at most 200, so speech starts fast; `voice-audio` takes 440) and fetches

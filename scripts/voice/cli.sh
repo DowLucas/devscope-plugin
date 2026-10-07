@@ -2,7 +2,7 @@
 # /devscope:voice — turn the voice announcer and auto voice (a spoken summary of every reply) on/off,
 # mute, test, stop speech, install the Piper voice; `say` speaks text from
 # stdin (/devscope:voice explain).
-# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|stop|say]
+# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|stop|say]
 set -uo pipefail
 VOICE_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
@@ -25,6 +25,7 @@ status() {
        "($( [ "$(_ds_voice_conf .announce_finished false)" = true ] && echo announced || echo not announced))"
   echo "Reminders: every $(_ds_voice_int .reminder_interval "$DS_VOICE_REMINDER_INTERVAL")s, at most $(_ds_voice_int .max_reminders "$DS_VOICE_MAX_REMINDERS")"
   echo "Auto voice: $(_ds_voice_replies_on && echo on || echo off)"
+  echo "Verbosity: explain $(_ds_voice_verbosity explain), auto $(_ds_voice_verbosity auto)"
   mute=$(_ds_voice_int .mute_until 0)
   [ "$mute" -gt "$(date +%s)" ] && echo "Muted for $(( (mute - $(date +%s) + 59) / 60 )) more min"
   pending=$(find "$DS_VOICE_PENDING" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
@@ -58,6 +59,28 @@ auto() {
       echo "Auto voice: off" ;;
     *) echo "Usage: auto [on|off]"; return 1 ;;
   esac
+}
+
+# How detailed explain and auto voice are: verbosity [explain|auto] [short|normal|long].
+verbosity() {
+  local modes="explain auto" level mode
+  case "${1:-}" in
+    explain|auto) modes=$1; level=${2:-} ;;
+    *) level=${1:-} ;;
+  esac
+  if [ -z "$level" ]; then
+    for mode in $modes; do echo "Verbosity ($mode): $(_ds_voice_verbosity "$mode")"; done
+    [ "$modes" = "explain auto" ] && echo "Set with: verbosity [explain|auto] short|normal|long"
+    return 0
+  fi
+  case "$level" in
+    short|normal|long) ;;
+    *) echo "Usage: verbosity [explain|auto] short|normal|long"; return 1 ;;
+  esac
+  for mode in $modes; do
+    _ds_voice_set --arg m "$mode" --arg l "$level" '.verbosity[$m] = $l'
+    echo "Verbosity ($mode): $level"
+  done
 }
 
 speed() {
@@ -172,6 +195,7 @@ case "${1:-status}" in
     esac ;;
   auto|replies) auto "${2:-}" ;;
   speed) speed "${2:-}" ;;
+  verbosity) verbosity "${2:-}" "${3:-}" ;;
   say) say ;;
   stop) stop ;;
   test)
@@ -180,6 +204,6 @@ case "${1:-status}" in
       "${DEVSCOPE_PRIVACY:-standard}" ;;
   setup) setup ;;
   *)
-    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|stop]"
+    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|stop]"
     exit 1 ;;
 esac
