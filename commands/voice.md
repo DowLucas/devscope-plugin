@@ -1,7 +1,7 @@
 ---
 allowed-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(bash:*)
-description: DevScope voice: explain a topic out loud, spoken reply summaries, announcements when a session waits on you (explain, replies, speed, on, off, mute, stop, test, setup)
-argument-hint: "[explain <topic>|replies [on|off]|speed [slow|normal|fast|1.35]|status|on|off|mute 1h|unmute|stop|test|setup|finished on|off]"
+description: DevScope voice: explain a topic out loud, auto voice after every reply, announcements when a session waits on you (explain, auto, speed, on, off, mute, stop, test, setup)
+argument-hint: "[explain <topic>|auto [on|off]|speed [slow|normal|fast|1.35]|status|on|off|mute 1h|unmute|stop|test|setup|finished on|off]"
 ---
 
 ## Your task
@@ -23,9 +23,9 @@ The default engine is `server`: the DevScope server voices speech (Kokoro, `voic
 Three features:
 - **Explain** (`explain [topic]`): see *Explain mode* below.
 - **Announcer** (`on`/`off`): speaks only after a session has waited on the user past a grace delay (30 s for permission prompts and questions, 10 s for failures, 2 min for finished turns if `finished on`), then reminds every 5 min, up to 3 times. Answering in time keeps it silent.
-- **Reply summaries** (`replies`, `replies on`, `replies off`; plain `replies` toggles): after every reply Claude finishes, a two-to-three sentence spoken summary of what it said. The reply is sent to the DevScope server to summarize and is not stored; in `private` mode only "<project> is done" is spoken, locally. A turn that used `explain` is not summarized on top.
+- **Auto voice** (`auto`, `auto on`, `auto off`; plain `auto` toggles; `replies` is an old name for it): whenever Claude finishes a reply, a two-to-three sentence spoken summary of what it said. The reply is sent to the DevScope server to summarize and is not stored; in `private` mode only "<project> is done" is spoken, locally. A turn that used `explain` is not summarized on top.
 
-`speed slow|normal|fast` sets how fast every voice talks: 1.0x, 1.2x (default) or 1.5x; `speed <number>` sets any rate from 0.5 to 2 (e.g. `speed 1.35`); plain `speed` shows the current one. `stop` ends speech in progress (a long explanation or a summary). `mute` silences reply summaries and announcements. Settings live in `~/.config/devscope/voice.json` (`delays`, `reminder_interval`, `max_reminders`, `speak_replies`, `speed` (a number, 0.5-2), `engine`: `auto`/`server`/`piper`/`system`/`off`, `voice`, `volume` (0.5-3, server default 2), `piper_model`).
+`speed slow|normal|fast` sets how fast every voice talks: 1.0x, 1.2x (default) or 1.5x; `speed <number>` sets any rate from 0.5 to 2 (e.g. `speed 1.35`); plain `speed` shows the current one. `stop` ends speech in progress (a long explanation or a summary). `auto off` turns off only auto voice; announcements and `explain` are unaffected. `mute` silences auto voice and announcements. Settings live in `~/.config/devscope/voice.json` (`delays`, `reminder_interval`, `max_reminders`, `speak_replies`, `speed` (a number, 0.5-2), `engine`: `auto`/`server`/`piper`/`system`/`off`, `voice`, `volume` (0.5-3, server default 2), `piper_model`).
 
 ## Explain mode (`explain [topic]`)
 
@@ -86,9 +86,9 @@ After the command, reply with this card and nothing else (max ~12 lines):
 
 If there is no problem, drop **The problem** and **Options**.
 
-### Keep the discussion going
+### Speak once
 
-When the user answers the question, keep talking it through the same way for the rest of this discussion: speak a short reply (40 to 120 words, same spoken rules, again ending with a question when there is still something to decide) with the same command, then answer in one to three written lines. Stop speaking once the user moves on to other work or says so.
+`explain` speaks only this explanation. When the user answers the question, answer in text as usual and do not run the `say` command again; auto voice (`/devscope:voice auto`), if on, already reads replies aloud.
 
 ### Anti-patterns
 

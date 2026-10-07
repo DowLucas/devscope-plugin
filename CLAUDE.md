@@ -18,7 +18,7 @@ hooks/
   hooks.json           # Hook event → script mappings
 commands/
   setup.md             # /devscope:setup slash command definition
-  voice.md             # /devscope:voice (explain/replies/speed/on/off/mute/stop/test/setup)
+  voice.md             # /devscope:voice (explain/auto/speed/on/off/mute/stop/test/setup)
   backfill-usage.md    # /devscope:backfill-usage (exact usage for past sessions)
 scripts/
   _helpers.sh          # Shared helpers (config loading, SHA256, timestamps)
@@ -47,7 +47,7 @@ scripts/
   directory-added.sh   # DirectoryAdded hook
   setup-hook.sh        # Setup hook (plugin init/maintenance)
   setup.sh             # Interactive setup (used by install.sh) — NOT a hook
-  voice/               # Voice: lib.sh (arm/clear/announce, replies, long speech), timer.sh, speak.sh, cli.sh
+  voice/               # Voice: lib.sh (arm/clear/announce, auto voice, long speech), timer.sh, speak.sh, cli.sh
 install.sh             # One-liner installer with gum UI
 mods/devscope-live/    # Second plugin: a Claude Code mod (see below)
 docs/specs/            # Design specs
@@ -216,7 +216,7 @@ claude plugin disable devscope@devscope                  # Disable
   no voice or is unreachable it falls back to Piper if installed (`/devscope:voice setup`),
   else `say`/`spd-say`/`espeak`. What is sent follows the
   privacy mode: `standard` sends no more than its events do. Tests: `tests/voice/run.sh`.
-- **Reply summaries** (opt-in, `/devscope:voice replies`, `speak_replies` in voice.json) are
+- **Auto voice** (opt-in, `/devscope:voice auto`, alias `replies`; `speak_replies` in voice.json) is
   independent of the announcer. On `response.complete`, `_ds_voice_on_reply_event` writes
   `replies/<session>.json` (the reply's first 2800 + last 1100 chars; nothing for `private`)
   and spawns `speak.sh reply`, which asks `/api/ai/voice-summary` with `trigger: "reply"`

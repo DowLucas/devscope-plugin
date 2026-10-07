@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# /devscope:voice — turn the voice announcer and spoken reply summaries on/off,
+# /devscope:voice — turn the voice announcer and auto voice (a spoken summary of every reply) on/off,
 # mute, test, stop speech, install the Piper voice; `say` speaks text from
 # stdin (/devscope:voice explain).
-# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|replies [on|off]|speed [slow|normal|fast|<0.5-2>]|stop|say]
+# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|stop|say]
 set -uo pipefail
 VOICE_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
@@ -24,7 +24,7 @@ status() {
        "failed $(_ds_voice_delay failed)s, finished $(_ds_voice_delay finished)s" \
        "($( [ "$(_ds_voice_conf .announce_finished false)" = true ] && echo announced || echo not announced))"
   echo "Reminders: every $(_ds_voice_int .reminder_interval "$DS_VOICE_REMINDER_INTERVAL")s, at most $(_ds_voice_int .max_reminders "$DS_VOICE_MAX_REMINDERS")"
-  echo "Reply summaries: $(_ds_voice_replies_on && echo on || echo off)"
+  echo "Auto voice: $(_ds_voice_replies_on && echo on || echo off)"
   mute=$(_ds_voice_int .mute_until 0)
   [ "$mute" -gt "$(date +%s)" ] && echo "Muted for $(( (mute - $(date +%s) + 59) / 60 )) more min"
   pending=$(find "$DS_VOICE_PENDING" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
@@ -36,7 +36,8 @@ status() {
   esac
 }
 
-replies() {
+# Auto voice: a spoken summary whenever Claude finishes a reply (`replies` is its old name).
+auto() {
   local want="${1:-}"
   if [ -z "$want" ]; then
     _ds_voice_replies_on && want=off || want=on
@@ -44,7 +45,7 @@ replies() {
   case "$want" in
     on)
       _ds_voice_set '.speak_replies = true'
-      echo "Reply summaries: on. After every reply, a short spoken summary of what Claude said."
+      echo "Auto voice: on. Whenever Claude finishes a reply, you hear a short summary of it."
       if [ "${DEVSCOPE_PRIVACY:-standard}" = "private" ]; then
         echo "Private mode: replies stay on this machine, so you hear only which project finished."
       else
@@ -54,8 +55,8 @@ replies() {
     off)
       _ds_voice_set '.speak_replies = false'
       rm -f "$DS_VOICE_DIR/replies/"*.json 2>/dev/null
-      echo "Reply summaries: off" ;;
-    *) echo "Usage: replies [on|off]"; return 1 ;;
+      echo "Auto voice: off" ;;
+    *) echo "Usage: auto [on|off]"; return 1 ;;
   esac
 }
 
@@ -83,14 +84,14 @@ say() {
   job="$DS_VOICE_DIR/say/$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "s-$(_ds_now_ns)").json"
   ( umask 077; jq -n --arg t "$text" --arg p "${DEVSCOPE_PRIVACY:-standard}" --arg project "$(basename "$PWD")" \
       '{text: $t, privacy: $p, project: $project}' > "$job" ) || return 1
-  # This turn spoke: its reply is not summarized on top (reply summaries).
+  # This turn spoke: auto voice does not summarize its reply on top.
   pid=$(_ds_voice_claude_pid)
   [ -n "$pid" ] && : > "$DS_VOICE_DIR/spoke/$pid"
   _ds_voice_spawn "$VOICE_DIR/speak.sh" say "$job"
   echo "Speaking with: $(_ds_voice_engine) (about $(( (${#text} + 17) / 18 )) s). Stop with '/devscope:voice stop'."
 }
 
-# End speech in progress or queued: reply summaries and explanations.
+# End speech in progress or queued: auto voice and explanations.
 stop() {
   local f pid n=0
   for f in "$DS_VOICE_DIR/speakers/"*; do
@@ -169,7 +170,7 @@ case "${1:-status}" in
       off) _ds_voice_set '.announce_finished = false'; echo "Finished turns will not be announced." ;;
       *) echo "Usage: finished on|off"; exit 1 ;;
     esac ;;
-  replies) replies "${2:-}" ;;
+  auto|replies) auto "${2:-}" ;;
   speed) speed "${2:-}" ;;
   say) say ;;
   stop) stop ;;
@@ -179,6 +180,6 @@ case "${1:-status}" in
       "${DEVSCOPE_PRIVACY:-standard}" ;;
   setup) setup ;;
   *)
-    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|replies [on|off]|speed [slow|normal|fast|<0.5-2>]|stop]"
+    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|stop]"
     exit 1 ;;
 esac

@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   presets. A number outside the range is refused rather than clamped, and
   `speed` shows a custom rate as itself (`1.35x`).
 
+### Changed
+- `/devscope:voice replies` is now **`/devscope:voice auto`** (auto voice: a spoken
+  summary whenever Claude finishes a reply). `replies` still works.
+- `/devscope:voice explain` speaks once, when you run it. Follow-up answers are
+  text; turn on auto voice to hear them.
+
 ## [0.24.0] - 2026-10-07
 
 ### Added

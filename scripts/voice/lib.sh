@@ -1,11 +1,11 @@
 # shellcheck shell=bash
 # Voice: the announcer, which speaks when a Claude Code session has been
-# waiting on the user past a grace delay; spoken reply summaries after every
+# waiting on the user past a grace delay; auto voice, a spoken summary of every
 # finished turn; and long speech for /devscope:voice explain. Sourced (after
 # _helpers.sh) by send-event.sh, which arms and clears on every hook event, by
 # timer.sh, which waits and announces, by speak.sh, which speaks replies and
 # explanations, and by cli.sh (/devscope:voice). Opt-in: the announcer stays
-# silent until voice.json says enabled, reply summaries until speak_replies.
+# silent until voice.json says enabled, auto voice until speak_replies.
 #
 # State under ~/.cache/devscope/voice/:
 #   pending/<session>.json  one marker per blocked session. Later activity from
@@ -211,7 +211,7 @@ _ds_voice_on_event() {
   return 0
 }
 
-# --- Reply summaries (/devscope:voice replies on) ---
+# --- Auto voice (/devscope:voice auto on): reply summaries ---
 
 # Independent of the announcer: on every finished turn, queue Claude's reply
 # for speak.sh to summarize and speak. A turn that already spoke an explanation
