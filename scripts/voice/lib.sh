@@ -52,6 +52,12 @@ DS_VOICE_SPEED_SLOW=1.0
 DS_VOICE_SPEED_NORMAL=1.2
 DS_VOICE_SPEED_FAST=1.5
 DS_VOICE_SERVER_TIMEOUT=20
+# A failed server-voice request is tried again after this many seconds when the
+# failure is passing: a rate limit (429, or 401 from backends before the fix
+# that reported their key limiter that way), the backend restarting (502/503/
+# 504) or no response. Otherwise the local fallback voice, a different voice,
+# would speak.
+DS_VOICE_SERVER_RETRY_DELAY="${DS_VOICE_SERVER_RETRY_DELAY:-1.5}"
 # Gemini takes ~3 s warm for a summary; this runs in the background timer, so
 # waiting longer costs the user nothing and avoids falling back to the template.
 DS_VOICE_SUMMARY_TIMEOUT=10
@@ -556,9 +562,10 @@ _ds_voice_server() {  # text privacy
   return "$rc"
 }
 
-# Fetch the server voice for a text (at most 440 characters) into a WAV file.
-_ds_voice_server_fetch() {  # text privacy out-file
-  local body code cfg=""
+# Fetch the server voice for a text (at most 440 characters) into a WAV file,
+# trying a passing failure again up to `attempts` times in all (default 2).
+_ds_voice_server_fetch() {  # text privacy out-file [attempts]
+  local body code cfg="" attempt=1 attempts="${4:-2}"
   [ "${2:-standard}" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ] || return 1
   # volume is only sent when set, so the server's default applies otherwise.
   body=$(jq -nc --arg t "$1" --arg v "$(_ds_voice_conf .voice "$DS_VOICE_SERVER_VOICE")" \
@@ -566,12 +573,21 @@ _ds_voice_server_fetch() {  # text privacy out-file
     --arg vol "$(_ds_voice_conf .volume "")" \
     '{text: $t, voice: $v, speed: $s} + (if $vol == "" then {} else {volume: ($vol | tonumber)} end)' 2>/dev/null) || return 1
   cfg="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
-  code=$(printf '%s' "$cfg" | curl --config - -s -o "$3" -w '%{http_code} %{content_type}' \
-    -X POST "${DEVSCOPE_URL}/api/ai/voice-audio" -H "x-requested-with: devscope-cli" \
-    -H "Content-Type: application/json" -d "$body" --max-time "$DS_VOICE_SERVER_TIMEOUT" 2>/dev/null)
-  case "$code" in
-    "200 audio/"*) return 0 ;;
-  esac
+  while :; do
+    code=$(printf '%s' "$cfg" | curl --config - -s -o "$3" -w '%{http_code} %{content_type}' \
+      -X POST "${DEVSCOPE_URL}/api/ai/voice-audio" -H "x-requested-with: devscope-cli" \
+      -H "Content-Type: application/json" -d "$body" --max-time "$DS_VOICE_SERVER_TIMEOUT" 2>/dev/null)
+    case "$code" in
+      "200 audio/"*) return 0 ;;
+    esac
+    case "${code%% *}" in
+      401|429|502|503|504|000|'') ;;
+      *) break ;;
+    esac
+    [ "$attempt" -lt "$attempts" ] || break
+    attempt=$((attempt + 1))
+    sleep "$DS_VOICE_SERVER_RETRY_DELAY"
+  done
   _ds_voice_log "server voice unavailable (${code:-no response}) $(head -c 160 "$3" 2>/dev/null | tr -d '\n')"
   return 1
 }
@@ -776,7 +792,9 @@ _ds_voice_speak_long() {  # text [privacy]
   while [ "$i" -lt "$n" ]; do
     next=""
     if [ $((i + 1)) -lt "$n" ]; then
-      _ds_voice_server_fetch "${chunks[$((i + 1))]}" "$privacy" "$dir/$((i + 1)).wav" &
+      # Mid-speech, a switch to the local voice is jarring: try harder (this
+      # runs while the current piece plays, so the wait is mostly hidden).
+      _ds_voice_server_fetch "${chunks[$((i + 1))]}" "$privacy" "$dir/$((i + 1)).wav" 4 &
       next=$!
     fi
     _ds_voice_progress speaking "$i" "$n" "$(_ds_voice_wav_ms "$dir/$i.wav")"

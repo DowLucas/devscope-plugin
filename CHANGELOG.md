@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.24.2] - 2026-10-07
+
+### Fixed
+- **The voice switched between a male and a female voice.** When a server-voice
+  request failed, speech fell back at once to the local system voice (on macOS
+  `say`, a female voice by default), sometimes partway through an explanation.
+  The failures were passing: the DevScope API key rate limit (fixed on the
+  server, DowLucas/devscope#81) and backend restarts. A request that fails with
+  429, 401, 502, 503, 504 or no response is now tried again after 1.5 s before
+  the local voice speaks, and the next piece of a long explanation, fetched
+  while the current one plays, is tried up to four times.
+
 ## [0.24.1] - 2026-10-07
 
 ### Added
