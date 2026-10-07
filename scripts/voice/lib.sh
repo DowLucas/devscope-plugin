@@ -42,6 +42,9 @@ DS_VOICE_MAX_REMINDERS=3
 DS_VOICE_MIN_REMINDER_INTERVAL=5
 # Longest single sleep in timer.sh, so off/unmute/re-arm are noticed promptly.
 DS_VOICE_MAX_SLEEP=30
+# While the screen is locked, a due announcement is checked again this often,
+# so it is spoken soon after the person unlocks.
+DS_VOICE_LOCK_POLL="${DS_VOICE_LOCK_POLL:-5}"
 # A speech engine or player that hangs longer than this is killed.
 DS_VOICE_SPEAK_TIMEOUT=30
 # Server voice (Kokoro): default for voice.json `voice`.
@@ -66,6 +69,8 @@ DS_VOICE_SUMMARY_TIMEOUT=10
 # is fetched while the current one plays.
 DS_VOICE_CHUNK_FIRST=200
 DS_VOICE_CHUNK_MAX=400
+# What one voice-audio request takes: text up to this length is never split.
+DS_VOICE_ONE_REQUEST=440
 # Longest text spoken at once (~3 minutes at 1.2x); the rest is cut.
 DS_VOICE_LONG_MAX=3000
 # How much of Claude's reply is sent for a summary (the server takes 4000).
@@ -113,6 +118,38 @@ _ds_voice_verbosity() {  # explain|auto
   local v
   v=$(_ds_voice_conf ".verbosity.$1" normal)
   case "$v" in short|normal|long) printf '%s' "$v" ;; *) printf normal ;; esac
+}
+
+# --- Screen lock: speak only to someone at the computer ---
+
+# Whether this machine's screen is locked (or, on macOS, its screensaver runs).
+# Not locked when it cannot tell: no display session (SSH, a server), or a
+# Linux locker that does not set logind's LockedHint (a bare i3lock).
+_ds_voice_screen_locked() {
+  # Test hook: locked while this file exists.
+  if [ -n "${DS_VOICE_LOCKED_FILE:-}" ]; then [ -e "$DS_VOICE_LOCKED_FILE" ]; return; fi
+  case "$(uname -s)" in
+    Darwin)
+      ioreg -n Root -d1 2>/dev/null | grep -q '"CGSSessionScreenIsLocked"=Yes' && return 0
+      pgrep -x ScreenSaverEngine >/dev/null 2>&1 ;;
+    Linux)
+      command -v loginctl >/dev/null 2>&1 || return 1
+      local session
+      # The user's graphical session first: that is where the speakers are,
+      # even when Claude Code itself runs in an SSH session.
+      session=$(loginctl show-user "${USER:-$(id -un)}" -p Display --value 2>/dev/null)
+      [ -n "$session" ] || session="${XDG_SESSION_ID:-}"
+      [ -n "$session" ] || return 1
+      [ "$(loginctl show-session "$session" -p LockedHint --value 2>/dev/null)" = yes ] ;;
+    *) return 1 ;;
+  esac
+}
+
+# Whether speech may play now: not while the screen is locked, unless
+# voice.json says `when_locked: play`.
+_ds_voice_can_play() {
+  [ "$(_ds_voice_conf .when_locked quiet)" = play ] && return 0
+  ! _ds_voice_screen_locked
 }
 
 _ds_voice_muted() {
@@ -249,6 +286,9 @@ _ds_voice_on_reply_event() {  # event-type hook-input
   fi
   _ds_voice_muted && return 0
   [ "$(_ds_voice_conf .engine auto)" = "off" ] && return 0
+  # Nobody at the computer: a summary of this reply would be stale by the
+  # time anyone hears it, and it is on screen anyway.
+  _ds_voice_can_play || return 0
   sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
   [ -n "$sid" ] || return 0
   # Private sessions keep the reply on this machine and get the template.
@@ -745,21 +785,50 @@ _ds_voice_wav_ms() {
   echo $(( (size - 44) * 1000 / rate ))
 }
 
-# Split a text into pieces of at most DS_VOICE_CHUNK_MAX characters (the first
-# at most DS_VOICE_CHUNK_FIRST), ending at sentence ends where possible. One
-# piece per line; the text is cut after DS_VOICE_LONG_MAX characters.
+# Split a text into the pieces it is voiced in, one per line. Each piece is a
+# separate recording, and the voice's intonation restarts at each one, so:
+# text that fits one voice-audio request (DS_VOICE_ONE_REQUEST) stays whole;
+# longer text is split only between sentences, packing whole sentences up to
+# DS_VOICE_CHUNK_MAX (the first piece about DS_VOICE_CHUNK_FIRST, so speech
+# starts quickly); a single sentence over the maximum is split at a comma,
+# semicolon or colon, and at a word only as a last resort. The text is cut
+# after DS_VOICE_LONG_MAX characters, at a piece boundary.
 _ds_voice_chunks() {
   printf '%s\n' "$1" | tr '\n\r\t' '   ' | awk -v first="$DS_VOICE_CHUNK_FIRST" \
-    -v max="$DS_VOICE_CHUNK_MAX" -v cap="$DS_VOICE_LONG_MAX" '
+    -v max="$DS_VOICE_CHUNK_MAX" -v one="$DS_VOICE_ONE_REQUEST" -v cap="$DS_VOICE_LONG_MAX" '
+    function flush_units(text,   i, k, parts, cur, word) {
+      # A sentence longer than max: clauses first, then words.
+      if (length(text) <= max) { units[++nu] = text; return }
+      k = split(text, parts, " "); cur = ""
+      for (i = 1; i <= k; i++) {
+        word = substr(parts[i], 1, max)
+        if (cur != "" && length(cur) + 1 + length(word) > max) { units[++nu] = cur; cur = "" }
+        cur = (cur == "" ? word : cur " " word)
+        if (length(cur) >= max / 2 && word ~ /[,;:]$/) { units[++nu] = cur; cur = "" }
+      }
+      if (cur != "") units[++nu] = cur
+    }
     { for (i = 1; i <= NF; i++) w[++n] = $i }
     END {
+      text = ""
+      for (i = 1; i <= n; i++) text = (text == "" ? w[i] : text " " w[i])
+      if (text == "") exit
+      if (length(text) <= one) { print text; exit }
+      # Sentences, each a unit (or several, when longer than max).
+      sentence = ""
+      for (i = 1; i <= n; i++) {
+        sentence = (sentence == "" ? w[i] : sentence " " w[i])
+        if (w[i] ~ /[.!?][")]*$/) { flush_units(sentence); sentence = "" }
+      }
+      if (sentence != "") flush_units(sentence)
+      # Pack whole units into pieces; the first is kept short for a quick start.
       cur = ""; lim = first; total = 0
-      for (i = 1; i <= n && total < cap; i++) {
-        word = substr(w[i], 1, max)
-        if (cur != "" && length(cur) + 1 + length(word) > lim) { print cur; total += length(cur); cur = ""; lim = max }
-        cur = (cur == "" ? word : cur " " word)
-        # A sentence end closes a piece once it is half full.
-        if (length(cur) >= lim / 2 && word ~ /[.!?:;][")]*$/) { print cur; total += length(cur); cur = ""; lim = max }
+      for (i = 1; i <= nu && total < cap; i++) {
+        if (cur != "" && (length(cur) + 1 + length(units[i]) > lim || (lim == first && length(cur) >= first / 2))) {
+          print cur; total += length(cur); cur = ""; lim = max
+        }
+        if (total >= cap) break
+        cur = (cur == "" ? units[i] : cur " " units[i])
       }
       if (cur != "" && total < cap) print cur
     }'
@@ -781,16 +850,19 @@ _ds_voice_speak_long() {  # text [privacy]
   if [ -n "${DS_VOICE_SPEAK_LOG:-}" ] || [ "$privacy" = "private" ] || [ -z "${DEVSCOPE_API_KEY:-}" ] || \
      { [ "$engine" != "auto" ] && [ "$engine" != "server" ]; }; then
     while [ "$i" -lt "$n" ]; do
+      _ds_voice_can_play || { _ds_voice_log "screen locked: speech stopped"; break; }
       _ds_voice_progress speaking "$i" "$n"
       _ds_voice_speak "${chunks[$i]}" "$privacy"
       i=$((i + 1))
     done
     return 0
   fi
+  _ds_voice_can_play || { _ds_voice_log "screen locked: speech not started"; return 0; }
   dir=$(mktemp -d "${TMPDIR:-/tmp}/ds-voice.XXXXXX") || return 0
   _ds_voice_progress voicing 0 "$n"
   if ! _ds_voice_server_fetch "${chunks[0]}" "$privacy" "$dir/0.wav"; then
     while [ "$i" -lt "$n" ]; do
+      _ds_voice_can_play || { _ds_voice_log "screen locked: speech stopped"; break; }
       _ds_voice_progress speaking "$i" "$n"
       _ds_voice_speak_local "${chunks[$i]}"
       i=$((i + 1))
@@ -806,11 +878,17 @@ _ds_voice_speak_long() {  # text [privacy]
       _ds_voice_server_fetch "${chunks[$((i + 1))]}" "$privacy" "$dir/$((i + 1)).wav" 4 &
       next=$!
     fi
+    if ! _ds_voice_can_play; then
+      _ds_voice_log "screen locked: speech stopped"
+      [ -z "$next" ] || wait "$next"
+      break
+    fi
     _ds_voice_progress speaking "$i" "$n" "$(_ds_voice_wav_ms "$dir/$i.wav")"
     _ds_voice_play "$dir/$i.wav"
     i=$((i + 1))
     if [ -n "$next" ] && ! wait "$next"; then
       while [ "$i" -lt "$n" ]; do
+        _ds_voice_can_play || { _ds_voice_log "screen locked: speech stopped"; break; }
         _ds_voice_progress speaking "$i" "$n"
         _ds_voice_speak_local "${chunks[$i]}"
         i=$((i + 1))

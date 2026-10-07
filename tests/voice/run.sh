@@ -13,7 +13,9 @@ unset DEVSCOPE_PRIVACY
 # shellcheck disable=SC1091
 . "$ROOT/tests/lib/stub.sh"
 # The suite may itself run under Claude Code, whose child shells would match.
-export DS_VOICE_SERVER_RETRY_DELAY=0.3
+export DS_VOICE_SERVER_RETRY_DELAY=0.3 DS_VOICE_LOCK_POLL=1
+# Unlocked unless a test creates this file (the suite may run on a locked desktop).
+LOCK="$TMP/locked"; export DS_VOICE_LOCKED_FILE="$LOCK"
 export DS_VOICE_SPEAK_LOG="$TMP/spoken" DS_VOICE_PRIVACY_LOG="$TMP/privacy" DEVSCOPE_NO_DRAIN=1 DS_VOICE_CLAUDE_PID=none
 CONF="$XDG_CONFIG_HOME/devscope/voice.json"
 PENDING="$HOME/.cache/devscope/voice/pending"
@@ -210,6 +212,12 @@ pieces=$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$LONG")
 [ "$(printf '%s\n' "$pieces" | awk 'length > 400' | wc -l | tr -d ' ')" = 0 ] && ok "no piece over 400 characters" || bad "piece size" ""
 [ "$(printf '%s\n' "$pieces" | grep -vc '\.$')" = 0 ] && ok "pieces end at sentence ends" || bad "sentence ends" "$pieces"
 [ "$(printf '%s\n' "$pieces" | tr '\n' ' ' | tr -s ' ' | sed 's/ $//')" = "$(printf '%s' "$LONG" | sed 's/ $//')" ] && ok "pieces add up to the text" || bad "lossless" ""
+one=$(printf 'A summary that fits one request. %.0s' $(seq 1 12))
+[ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$one" | wc -l | tr -d ' ')" = 1 ] && ok "text that fits one request is one piece (${#one} chars)" || bad "one piece" ""
+runon="Intro. $(for i in $(seq 1 60); do printf 'clause %s, ' "$i"; done)end."
+runon_pieces=$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$runon")
+[ "$(printf '%s\n' "$runon_pieces" | awk 'length > 400' | wc -l | tr -d ' ')" = 0 ] && \
+  [ "$(printf '%s\n' "$runon_pieces" | sed -n '2,$p' | sed '$d' | grep -vc ',$')" = 0 ] && ok "a long sentence is split at commas" || bad "comma split" "$runon_pieces"
 huge=$(for i in $(seq 1 400); do printf 'word%s. ' "$i"; done)
 [ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$huge" | wc -c | tr -d ' ')" -le 3500 ] && ok "long text is cut near 3000 characters" || bad "cap" ""
 
@@ -231,6 +239,65 @@ configure; reset
 printf 'One short explanation.\n' | "$S/voice/cli.sh" say >/dev/null
 wait_spoken 1 5; sleep 0.5
 [ ! -f "$HOME/.cache/devscope/voice/progress.json" ] && ok "progress file removed when speech ends" || bad "progress cleanup" "$(cat "$HOME/.cache/devscope/voice/progress.json")"
+
+# 11b. Screen lock: detection, then each kind of speech.
+mkdir -p "$TMP/bin"
+cat > "$TMP/bin/loginctl" <<'EOF'
+#!/bin/sh
+case "$*" in
+  *"show-user"*"Display"*) echo c7 ;;
+  *"show-session c7"*"LockedHint"*) cat "$FAKE_LOCKED" 2>/dev/null || echo no ;;
+esac
+EOF
+cat > "$TMP/bin/ioreg" <<'EOF'
+#!/bin/sh
+echo '    "IOConsoleUsers" = ({"CGSSessionScreenIsLocked"='"$(cat "$FAKE_LOCKED" 2>/dev/null || echo No)"',"kCGSSessionOnConsoleKey"=Yes})'
+EOF
+chmod +x "$TMP/bin/loginctl" "$TMP/bin/ioreg"
+detect() {  # os locked-value -> 0 when locked
+  ( unset DS_VOICE_LOCKED_FILE; export PATH="$TMP/bin:$PATH" FAKE_LOCKED="$TMP/fake-locked"
+    printf '%s' "$2" > "$FAKE_LOCKED"
+    . "$S/_helpers.sh"; . "$S/voice/lib.sh"
+    FAKE_OS=$1; uname() { echo "$FAKE_OS"; }; pgrep() { return 1; }
+    _ds_voice_screen_locked )
+}
+detect Linux yes && ok "linux: LockedHint=yes is locked" || bad "linux locked" ""
+detect Linux no && bad "linux unlocked" "reads as locked" || ok "linux: LockedHint=no is unlocked"
+detect Darwin Yes && ok "macOS: CGSSessionScreenIsLocked=Yes is locked" || bad "mac locked" ""
+detect Darwin No && bad "mac unlocked" "reads as locked" || ok "macOS: unlocked when the key says No"
+( unset DS_VOICE_LOCKED_FILE; export PATH="/usr/bin:/bin"; . "$S/_helpers.sh"; . "$S/voice/lib.sh"; uname() { echo Linux; }
+  command() { [ "$2" = loginctl ] && return 1; builtin command "$@"; }; _ds_voice_screen_locked ) && bad "no logind" "locked" || ok "no logind (SSH, server): unlocked"
+
+# Announcements wait while locked and are said after unlock, reminders untouched.
+configure; reset; touch "$LOCK"
+DEVSCOPE_PRIVACY=private hook permission-request.sh l1 /work/cloud "$PERM"
+sleep 3; [ "$(lines)" = 0 ] && ok "locked: announcement held" || bad "held" "$(spoken)"
+[ "$(jq -r .spoken "$PENDING/l1.json")" = 0 ] && ok "locked: no reminder used up" || bad "held count" "$(cat "$PENDING/l1.json")"
+rm -f "$LOCK"
+wait_spoken 1 5 && [ "$(spoken)" = "cloud needs permission to use Bash." ] && ok "unlocked: the announcement is said" || bad "after unlock" "$(spoken)"
+
+# Auto voice skips a reply finished while locked.
+reset; "$S/voice/cli.sh" auto on >/dev/null; respond '{"text": "summary"}'; touch "$LOCK"
+hook response-stop.sh l2 /work/plugin '{hook_event_name: "Stop", last_assistant_message: "Done."}'
+sleep 1.5; [ "$(lines)" = 0 ] && [ -z "$(paths | grep voice-summary)" ] && ok "locked: auto voice skipped, nothing sent" || bad "auto locked" "$(spoken)"
+rm -f "$LOCK"; "$S/voice/cli.sh" auto off >/dev/null
+
+# An explanation stops at the next piece once the screen locks.
+reset
+stopped=$( export DS_VOICE_SPEAK_LOG="$TMP/spoken"; . "$S/_helpers.sh"; . "$S/voice/lib.sh"
+  _ds_voice_speak() { printf '%s\n' "$1" >> "$DS_VOICE_SPEAK_LOG"; touch "$LOCK"; }
+  _ds_voice_speak_long "$LONG" standard; grep -c . "$DS_VOICE_SPEAK_LOG")
+[ "$stopped" = 1 ] && ok "locked mid-explanation: stops after the current piece" || bad "explain stop" "$stopped pieces"
+rm -f "$LOCK"
+
+# when-locked play ignores the lock.
+reset; "$S/voice/cli.sh" when-locked play >/dev/null; touch "$LOCK"
+( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_can_play ) && ok "when-locked play: speaks while locked" || bad "play override" ""
+"$S/voice/cli.sh" when-locked quiet >/dev/null
+( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_can_play ) && bad "quiet" "plays while locked" || ok "when-locked quiet: silent while locked"
+[[ "$("$S/voice/cli.sh" status)" == *"Screen: locked; when locked: quiet"* ]] && ok "status shows the screen and the setting" || bad "status screen" "$("$S/voice/cli.sh" status | grep Screen)"
+"$S/voice/cli.sh" when-locked loud >/dev/null && bad "bad when-locked" "accepted" || ok "when-locked rejects an unknown value"
+rm -f "$LOCK"
 
 # 12. Auto voice: reply summaries, independent of the announcer, on every finished turn.
 STOP='{hook_event_name: "Stop", last_assistant_message: "I fixed the reminder timer. All 30 tests pass. Want me to open a PR?"}'

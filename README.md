@@ -224,6 +224,20 @@ Other commands: `off`, `mute 1h`, `unmute`, `test`, `status`, `finished on` (als
 
 `/devscope:voice explain --short <topic>` (or `--long`) overrides it for one explanation.
 
+### Locked screen
+
+DevScope only talks to someone at the computer. While the screen is locked:
+
+| | What happens |
+|---|---|
+| Announcements ("a session is waiting") | held, then said a few seconds after you unlock if the session still waits; no reminder is used up |
+| Auto voice | skipped; the reply is on screen when you are back |
+| An explanation | stops after the piece that is playing |
+
+It is detected locally, with nothing to install: on macOS from `ioreg` (`CGSSessionScreenIsLocked`) and the screensaver, on Linux from logind's `LockedHint` for your graphical session (GNOME, KDE and most lockers set it). Where it cannot tell (an SSH session, a server, a locker that does not set `LockedHint`, such as a bare i3lock) speech plays as before. An announcement held for more than 30 minutes is dropped, as any other that old is. `/devscope:voice when-locked play` turns this off; `when-locked quiet` (the default) turns it back on, and `status` shows whether the screen reads as locked.
+
+Long speech is voiced in as few pieces as possible: text that fits one request (440 characters, so every normal summary) is one piece, and longer text is split only between sentences, so there is no pause mid-sentence.
+
 ### Auto voice
 
 `/devscope:voice auto` toggles a short spoken summary whenever Claude finishes a reply: the outcome first, then anything you need to decide, in two or three sentences. It works with the announcer on or off. The reply is sent to your DevScope server to summarize and is not stored; in `private` mode you only hear which project finished, voiced locally.

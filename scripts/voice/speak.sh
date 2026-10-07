@@ -36,6 +36,8 @@ case "${1:-}" in
       # A newer reply from the same session replaces this one.
       current || return 0
       _ds_voice_muted && return 0
+      # Locked while it waited its turn: skip, as when queued.
+      _ds_voice_can_play || return 0
       # Summarized under the lock, so the progress bar covers it too.
       _ds_voice_progress summarizing
       text=$(_ds_voice_reply_text "$JOB") || return 0
