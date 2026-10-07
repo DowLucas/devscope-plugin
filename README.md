@@ -213,6 +213,17 @@ Running several sessions, or working in another window? `/devscope:voice on` mak
 
 Other commands: `off`, `mute 1h`, `unmute`, `test`, `status`, `finished on` (also announce finished turns after 2 min), `speed slow|normal|fast` (1.0×, 1.2× or 1.5×, for every voice; or any number from 0.5 to 2, e.g. `speed 1.35`), `stop` (end speech in progress). Settings live in `~/.config/devscope/voice.json`.
 
+### How detailed
+
+`/devscope:voice verbosity short|normal|long` sets how detailed spoken responses are, for explanations and auto voice together; name one to set only that (`verbosity auto short`, `verbosity explain long`). Plain `verbosity` shows both.
+
+| | `short` | `normal` (default) | `long` |
+|---|---|---|---|
+| Auto voice | one sentence, the outcome | two or three sentences | four to six: what changed, why, what's next |
+| Explain | about 40 seconds | about a minute and a half | about three minutes |
+
+`/devscope:voice explain --short <topic>` (or `--long`) overrides it for one explanation.
+
 ### Auto voice
 
 `/devscope:voice auto` toggles a short spoken summary whenever Claude finishes a reply: the outcome first, then anything you need to decide, in two or three sentences. It works with the announcer on or off. The reply is sent to your DevScope server to summarize and is not stored; in `private` mode you only hear which project finished, voiced locally.

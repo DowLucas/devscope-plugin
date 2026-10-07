@@ -242,8 +242,12 @@ respond '{"text": "plugin: the reminder timer is fixed and tests pass. It asks w
 hook response-stop.sh r1 /work/plugin "$STOP"
 wait_spoken 1 5 && [ "$(spoken)" = "plugin: the reminder timer is fixed and tests pass. It asks whether to open a PR." ] && ok "reply summary spoken (announcer off)" || bad "reply" "$(spoken) $(cat "$HOME/.cache/devscope/voice/voice.log" 2>/dev/null)"
 S_AT=/api/ai/voice-summary
-[ "$(last_at $S_AT .body.trigger)/$(last_at $S_AT .body.project)" = "reply/plugin" ] && ok "asks for a reply summary" || bad "reply body" "$(last_at $S_AT .)"
+[ "$(last_at $S_AT .body.trigger)/$(last_at $S_AT .body.project)/$(last_at $S_AT .body.length)" = "reply/plugin/normal" ] && ok "asks for a reply summary, normal length" || bad "reply body" "$(last_at $S_AT .)"
 [[ "$(last_at $S_AT .body.last_message)" == *"All 30 tests pass"* ]] && ok "sends the reply to summarize" || bad "reply text" "$(last_at $S_AT .body)"
+reset; "$S/voice/cli.sh" verbosity auto short >/dev/null
+hook response-stop.sh r1b /work/plugin "$STOP"
+wait_spoken 1 5; [ "$(last_at $S_AT .body.length)" = short ] && ok "auto voice sends its verbosity as length" || bad "reply length" "$(last_at $S_AT .body)"
+jq 'del(.verbosity)' "$CONF" > "$TMP/c" && mv "$TMP/c" "$CONF"
 [ "$(lines)" = 1 ] && [ ! -d "$PENDING" ] || [ -z "$(ls "$PENDING" 2>/dev/null)" ] && ok "no announcer marker when the announcer is off" || bad "announcer" "$(ls "$PENDING")"
 
 reset
@@ -285,6 +289,15 @@ out=$("$S/voice/cli.sh" on); printf '%s' "$out" | grep -q "Voice announcer: on" 
 "$S/voice/cli.sh" mute 15m >/dev/null; [ "$(jq -r .mute_until "$CONF")" -gt $(( $(date +%s) + 890 )) ] && ok "cli mute 15m" || bad "mute" "$(cat "$CONF")"
 "$S/voice/cli.sh" mute soon >/dev/null && bad "bad duration" "accepted" || ok "cli rejects a bad duration"
 [[ "$("$S/voice/cli.sh" status)" == *"Auto voice: off"* ]] && ok "status shows auto voice" || bad "status auto" ""
+[[ "$("$S/voice/cli.sh" status)" == *"Verbosity: explain normal, auto normal"* ]] && ok "status shows verbosity" || bad "status verbosity" ""
+"$S/voice/cli.sh" verbosity short >/dev/null
+[ "$(jq -c .verbosity "$CONF")" = '{"explain":"short","auto":"short"}' ] && ok "verbosity short sets both" || bad "verbosity both" "$(cat "$CONF")"
+"$S/voice/cli.sh" verbosity auto long >/dev/null
+[ "$(jq -c .verbosity "$CONF")" = '{"explain":"short","auto":"long"}' ] && ok "verbosity auto long sets only auto" || bad "verbosity auto" "$(cat "$CONF")"
+[ "$("$S/voice/cli.sh" verbosity explain)" = "Verbosity (explain): short" ] && ok "verbosity explain reads one mode (for the explain command)" || bad "verbosity read" "$("$S/voice/cli.sh" verbosity explain)"
+"$S/voice/cli.sh" verbosity auto chatty >/dev/null && bad "bad verbosity" "accepted" || ok "verbosity rejects an unknown level"
+jq '.verbosity.auto = "huge"' "$CONF" > "$TMP/c" && mv "$TMP/c" "$CONF"
+[ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_verbosity auto)" = normal ] && ok "a hand-edited unknown level reads as normal" || bad "verbosity fallback" ""
 "$S/voice/cli.sh" speed slow >/dev/null; [ "$(jq -r .speed "$CONF")" = 1.0 ] && ok "cli speed slow = 1.0x" || bad "speed slow" "$(cat "$CONF")"
 "$S/voice/cli.sh" speed fast >/dev/null; [ "$(jq -r .speed "$CONF")" = 1.5 ] && ok "cli speed fast = 1.5x" || bad "speed fast" "$(cat "$CONF")"
 [[ "$("$S/voice/cli.sh" speed)" == *"Speed: fast (1.5x)"* ]] && ok "cli speed shows the preset" || bad "speed show" "$("$S/voice/cli.sh" speed)"
