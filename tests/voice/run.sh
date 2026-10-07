@@ -13,6 +13,7 @@ unset DEVSCOPE_PRIVACY
 # shellcheck disable=SC1091
 . "$ROOT/tests/lib/stub.sh"
 # The suite may itself run under Claude Code, whose child shells would match.
+export DS_VOICE_SERVER_RETRY_DELAY=0.3
 export DS_VOICE_SPEAK_LOG="$TMP/spoken" DS_VOICE_PRIVACY_LOG="$TMP/privacy" DEVSCOPE_NO_DRAIN=1 DS_VOICE_CLAUDE_PID=none
 CONF="$XDG_CONFIG_HOME/devscope/voice.json"
 PENDING="$HOME/.cache/devscope/voice/pending"
@@ -176,6 +177,18 @@ respond '{"error":"Server voice unavailable"}' "application/json" 503
 [ "$(server_speak standard)" = "1 " ] && ok "server voice: 503 falls back (fails)" || bad "server 503" "$(server_speak standard)"
 respond '{"ok":true}'
 [ "$(DEVSCOPE_API_KEY='' server_speak standard)" = "1 " ] && ok "server voice: needs an API key" || bad "server no key" ""
+# A passing failure (rate limit, restart) is tried again before the local voice speaks.
+for status in 429 401 502; do
+  respond '{"error":"Too many requests"}' "application/json" "$status"; reset_hits
+  ( sleep 0.15; respond "RIFFagain" "audio/wav" ) & FLIP=$!
+  out=$(server_speak standard); wait "$FLIP"
+  [ "$out" = "0 RIFFagain" ] && [ "$(paths | grep -c voice-audio)" = 2 ] && ok "server voice: $status is retried, then plays" || bad "retry $status" "$out $(paths | tr '\n' ' ')"
+done
+respond '{"error":"bad text"}' "application/json" 400; reset_hits
+[ "$(server_speak standard)" = "1 " ] && [ "$(paths | grep -c voice-audio)" = 1 ] && ok "server voice: a 400 is not retried" || bad "no retry 400" "$(paths | tr '\n' ' ')"
+respond '{"error":"down"}' "application/json" 503; reset_hits
+out=$(server_speak standard)
+[ "$(paths | grep -c voice-audio)" = 2 ] && ok "server voice: gives up after one retry" || bad "retry cap" "$(paths | tr '\n' ' ')"
 
 # 10c. Server voice for long speech: pieces fetched ahead, played in order.
 long_speak() {  # text privacy -> prints the played pieces, one per line
