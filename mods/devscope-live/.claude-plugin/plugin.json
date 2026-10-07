@@ -1,6 +1,6 @@
 {
   "name": "devscope-live",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "DevScope in the live session: team prompt suggestions, team skills, a stuck band, outcome labels and session-to-commit links",
   "author": {
     "name": "Lucas Dow",
@@ -11,7 +11,7 @@
     "nextPrompts": {
       "type": "boolean",
       "title": "Team prompt suggestions",
-      "description": "Suggest the next prompt that worked in similar sessions (yours and teammates who share theirs)",
+      "description": "Suggest a short next step (a few words) that worked in several similar sessions, only after Claude did work and did not ask you something",
       "default": true
     },
     "teamSkills": {

@@ -2,6 +2,19 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-10-07
+
+### Changed
+- **Team prompt suggestions are few and short.** A suggestion is at most 5 words
+  (60 characters) on one line; anything longer is dropped, whatever the server
+  sends. It is offered only after a turn in which Claude used tools and did not
+  end by asking a question (then your answer is the next prompt, and only you
+  know it). After three suggestions in a row are typed over, suggestions pause
+  for 30 minutes. The server side (DevScope backend) now also only proposes
+  habits: a short prompt that came next and worked in at least two separate
+  sessions (three for the opening prompt of a session), never a bare reply
+  like "yes" or "a".
+
 ## [0.2.0] - 2026-10-07
 
 ### Added

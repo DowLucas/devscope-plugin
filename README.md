@@ -170,9 +170,11 @@ Claude Code deletes transcripts after `cleanupPeriodDays` (30 days by default, s
 Claude Code *mod* (function hooks, early access, Claude Code 2.1.291 or newer)
 that brings DevScope into the live session:
 
-- **Team prompts**: after a turn, the next prompt that worked in similar
-  sessions (yours, and teammates who share theirs) appears as ghost text in the
-  prompt box. Tab takes it.
+- **Team prompts**: after a turn in which Claude did work, a short next step
+  (a few words, like `commit and push` or `/code-review high`) that worked in
+  several similar sessions (yours, and teammates who share theirs) appears as
+  ghost text in the prompt box. Tab takes it. It stays quiet when Claude asked
+  you something, and pauses for 30 minutes after you type over three in a row.
 - **Team skills**: when a prompt matches one of your team's approved skills,
   you're asked whether to use it. Choosing it attaches the skill to that prompt.
 - **Stuck band**: when Claude keeps failing the same way, a band above the

@@ -6,7 +6,7 @@ import { UNREADABLE_CONFIG, parseConfig, readOptions, resolveConfig } from './co
 import type { Config, Options } from './config'
 import { implicitLabel, shouldAsk } from './labels'
 import type { Label } from './labels'
-import { STEP_BACK_PROMPT, basename, nextPromptsBody } from './suggestions'
+import { STEP_BACK_PROMPT, afterPrompt, basename, fitsSuggestion, nextPromptsBody, shouldSuggestAfter } from './suggestions'
 import type { Suggestion } from './suggestions'
 import { USE_IT, matchSkill, skillContext, skillLabel } from './teamSkills'
 import type { TeamSkill } from './teamSkills'
@@ -101,6 +101,8 @@ let skills: TeamSkill[] = []
 const offered = new Set<string>()
 let lastAskAt = Number.NEGATIVE_INFINITY
 let suggestion: { text: string; at: number } | undefined
+/** Suggestions typed over in a row, and until when suggestions are paused. */
+let suggestState = { ignored: 0, pausedUntil: Number.NEGATIVE_INFINITY }
 let nudgeCheck: Timer | undefined
 let voiceIdle: Timer | undefined
 let voiceFrames: Timer | undefined
@@ -136,7 +138,7 @@ async function proposeNextPrompt($: EngineInterface, after: string | undefined) 
   })
   const response = await request<{ suggestions: Suggestion[] }>($, 'POST', '/api/live/next-prompts', body)
   const text = Array.isArray(response?.suggestions) ? response.suggestions[0]?.text?.trim() : undefined
-  if (!text) return
+  if (!text || !fitsSuggestion(text)) return
   suggestion = { text, at: await $.clock.now() }
   await $.prompt.suggest({ text }).catch(() => undefined)
 }
@@ -264,7 +266,9 @@ export const register: Register = (on, pluginOptions) => {
         if (await isPrivate($)) return
         const remote = await repoRemote($)
         if (options.commitLinks && remote) await resolvePrs($, remote)
-        if (options.nextPrompts && e.isInteractive) await proposeNextPrompt($, undefined)
+        if (options.nextPrompts && e.isInteractive && (await $.clock.now()) >= suggestState.pausedUntil) {
+          await proposeNextPrompt($, undefined)
+        }
       })()
     })
     return started
@@ -289,6 +293,7 @@ export const register: Register = (on, pluginOptions) => {
       const label = implicitLabel(e.text)
       if (label) void sendLabel($, turn.startedAt, label, 'implicit')
     }
+    if (suggestion) suggestState = afterPrompt(suggestState, e.text, suggestion.text, await $.clock.now())
     Object.assign(turn, { startedAt: iso(await $.clock.now()), lastPrompt: e.text, toolCalls: 0 })
     suggestion = undefined
     await update($, band, current => (current?.kind === 'label' ? null : current))
@@ -356,7 +361,14 @@ export const register: Register = (on, pluginOptions) => {
           const ask: Band = { kind: 'label', turnStartedAt: startedAt }
           await update($, band, current => current ?? ask)
         }
-        if (options.nextPrompts && lastPrompt) await proposeNextPrompt($, lastPrompt)
+        if (
+          options.nextPrompts &&
+          lastPrompt &&
+          shouldSuggestAfter({ answer: e.answer, toolCalls }) &&
+          now >= suggestState.pausedUntil
+        ) {
+          await proposeNextPrompt($, lastPrompt)
+        }
       })()
     })
     return done

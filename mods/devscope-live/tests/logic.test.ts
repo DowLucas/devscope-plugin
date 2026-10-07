@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { UNREADABLE_CONFIG, parseConfig, readOptions, resolveConfig } from '../hooks/config'
 import { implicitLabel, shouldAsk } from '../hooks/labels'
-import { basename, nextPromptsBody } from '../hooks/suggestions'
+import { SUGGEST, afterPrompt, basename, fitsSuggestion, nextPromptsBody, shouldSuggestAfter } from '../hooks/suggestions'
 import { matchSkill } from '../hooks/teamSkills'
 import type { TeamSkill } from '../hooks/teamSkills'
 import { isPrUrl, linkFromBash, parseGhPr, withTrailer, withoutCredentials } from '../hooks/vcs'
@@ -220,5 +220,34 @@ describe('voice bar', () => {
     expect(voiceLabel(progress())).toBe('plugin · explaining 2/4')
     expect(voiceLabel(progress({ phase: 'voicing', kind: 'reply' }))).toBe('plugin · creating audio')
     expect(voiceLabel(progress({ phase: 'summarizing', kind: 'reply', project: '' }))).toBe('summarizing the reply')
+  })
+})
+
+describe('suggestion thresholds', () => {
+  test('a suggestion is a few words on one line', () => {
+    expect(fitsSuggestion('commit and push')).toBe(true)
+    expect(fitsSuggestion('/code-review high')).toBe(true)
+    expect(fitsSuggestion('please also update the docs and the changelog')).toBe(false)
+    expect(fitsSuggestion('push\nnow')).toBe(false)
+    expect(fitsSuggestion(`/x ${'a'.repeat(SUGGEST.maxChars)}`)).toBe(false)
+    expect(fitsSuggestion('  ')).toBe(false)
+  })
+
+  test('only after a turn that did work and did not end on a question', () => {
+    expect(shouldSuggestAfter({ answer: 'Done. Tests pass.', toolCalls: 3 })).toBe(true)
+    expect(shouldSuggestAfter({ answer: 'Done.', toolCalls: 0 })).toBe(false)
+    expect(shouldSuggestAfter({ answer: 'Fixed.\n\nWant me to open a PR?', toolCalls: 2 })).toBe(false)
+    expect(shouldSuggestAfter({ answer: 'Which one do you want (a or b?)', toolCalls: 2 })).toBe(false)
+    expect(shouldSuggestAfter({ answer: 'Why? Because the cache was stale. Fixed it.', toolCalls: 2 })).toBe(true)
+  })
+
+  test('typing over three suggestions in a row pauses them; taking one resets the count', () => {
+    let state = { ignored: 0, pausedUntil: Number.NEGATIVE_INFINITY }
+    state = afterPrompt(state, 'something else', 'push', 0)
+    state = afterPrompt(state, 'more', 'push', 0)
+    expect(state.ignored).toBe(2)
+    expect(afterPrompt(state, 'Push', 'push', 0).ignored).toBe(0)
+    state = afterPrompt(state, 'third', 'push', 1000)
+    expect(state).toEqual({ ignored: 0, pausedUntil: 1000 + SUGGEST.pauseMs })
   })
 })
