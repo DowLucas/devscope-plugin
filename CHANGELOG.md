@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.31.0] - 2026-10-07
+
+### Added
+- **Subagents report what they were asked to do.** `agent.start` now carries
+  the subagent's `description` and `model` from the Agent tool call, so the
+  DevScope topology can label each subagent. SubagentStart itself has neither,
+  so the Agent tool's PreToolUse queues them per session
+  (`~/.cache/devscope/intents/`) and `agent-start.sh` takes the oldest one of
+  its type from the last 10 minutes. In `private` mode only the model is kept;
+  the description is never written or sent.
+
 ## [0.30.0] - 2026-10-07
 
 ### Added

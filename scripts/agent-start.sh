@@ -8,6 +8,7 @@ INPUT=$(cat)
 AGENT_TYPE=$(echo "$INPUT" | jq -r '.agent_type // "unknown"')
 AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // ""')
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 
 # Detect parent agent via agent stack
 PARENT_AGENT_ID=""
@@ -22,8 +23,17 @@ if [ -n "$CWD" ] && [ -n "$AGENT_ID" ]; then
   echo "$AGENT_ID" >> "$STACK_FILE"
 fi
 
-PAYLOAD=$(jq -n --arg at "$AGENT_TYPE" --arg ai "$AGENT_ID" --arg pai "$PARENT_AGENT_ID" \
+# Description and model, as queued by the Agent tool's PreToolUse (tool-use.sh)
+INTENT="{}"
+if [ -n "$SESSION_ID" ]; then
+  INTENT=$(_ds_take_agent_intent "$SESSION_ID" "$AGENT_TYPE")
+  [ -n "$INTENT" ] || INTENT="{}"
+fi
+
+PAYLOAD=$(jq -n --arg at "$AGENT_TYPE" --arg ai "$AGENT_ID" --arg pai "$PARENT_AGENT_ID" --argjson intent "$INTENT" \
   '{agentType: $at, agentId: $ai}
-   | if $pai != "" then . + {parentAgentId: $pai} else . end')
+   | if $pai != "" then . + {parentAgentId: $pai} else . end
+   | if $intent.description then . + {description: $intent.description} else . end
+   | if $intent.model then . + {model: $intent.model} else . end')
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "agent.start" "$PAYLOAD"
