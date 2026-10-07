@@ -233,6 +233,19 @@ claude plugin disable devscope@devscope                  # Disable
   the next piece while the current one plays. `say` touches `spoke/<claude-pid>` so that
   turn's reply is not also summarized; the Stop hook consumes it, a new prompt clears it.
   `cli.sh stop` kills every registered `speakers/<pid>` process group.
+- **Screen lock** (`_ds_voice_screen_locked`, `_ds_voice_can_play`; voice.json `when_locked:
+  quiet|play`, default quiet). macOS: `ioreg -n Root -d1` → `"CGSSessionScreenIsLocked"=Yes`, or
+  `ScreenSaverEngine` running. Linux: logind `LockedHint` of the user's graphical session
+  (`loginctl show-user $USER -p Display`, falling back to `$XDG_SESSION_ID`). Anything it cannot
+  read counts as unlocked (SSH, servers, lockers without LockedHint). While locked: `timer.sh`
+  holds due announcements (re-checks every `DS_VOICE_LOCK_POLL` s, reminder count untouched; the
+  30-minute stale rule still drops them), `_ds_voice_on_reply_event` and `speak.sh reply` skip auto
+  voice, `_ds_voice_speak_long` stops before the next piece. Tests use `DS_VOICE_LOCKED_FILE`
+  (locked while the file exists) and fake `loginctl`/`ioreg` on `PATH`.
+- **Pieces** (`_ds_voice_chunks`): each piece is a separate recording and the voice's intonation
+  restarts at each, so text up to `DS_VOICE_ONE_REQUEST` (440, what voice-audio takes) is never
+  split; longer text is split only between sentences (first piece about 200 chars), and a single
+  sentence over 400 at a comma/semicolon/colon, at a word only as a last resort.
 - **`progress.json`** is the contract with the devscope-live mod's voice bar: the speak lock
   holder (`speak.sh`, `DS_VOICE_PROGRESS_KIND` set) writes `{kind, project, phase:
   summarizing|voicing|speaking, piece, pieces, pieceMs, at (epoch ms), pid}` atomically per

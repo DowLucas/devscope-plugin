@@ -2,7 +2,7 @@
 # /devscope:voice — turn the voice announcer and auto voice (a spoken summary of every reply) on/off,
 # mute, test, stop speech, install the Piper voice; `say` speaks text from
 # stdin (/devscope:voice explain).
-# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|stop|say]
+# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|stop|say]
 set -uo pipefail
 VOICE_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
@@ -26,6 +26,7 @@ status() {
   echo "Reminders: every $(_ds_voice_int .reminder_interval "$DS_VOICE_REMINDER_INTERVAL")s, at most $(_ds_voice_int .max_reminders "$DS_VOICE_MAX_REMINDERS")"
   echo "Auto voice: $(_ds_voice_replies_on && echo on || echo off)"
   echo "Verbosity: explain $(_ds_voice_verbosity explain), auto $(_ds_voice_verbosity auto)"
+  echo "Screen: $(_ds_voice_screen_locked && echo locked || echo unlocked); when locked: $(_ds_voice_conf .when_locked quiet)"
   mute=$(_ds_voice_int .mute_until 0)
   [ "$mute" -gt "$(date +%s)" ] && echo "Muted for $(( (mute - $(date +%s) + 59) / 60 )) more min"
   pending=$(find "$DS_VOICE_PENDING" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
@@ -58,6 +59,21 @@ auto() {
       rm -f "$DS_VOICE_DIR/replies/"*.json 2>/dev/null
       echo "Auto voice: off" ;;
     *) echo "Usage: auto [on|off]"; return 1 ;;
+  esac
+}
+
+# What happens while the screen is locked: quiet (default) holds announcements
+# until unlock, skips auto voice and stops an explanation; play ignores the lock.
+when_locked() {
+  case "${1:-}" in
+    '') echo "When locked: $(_ds_voice_conf .when_locked quiet) (screen is $(_ds_voice_screen_locked && echo locked || echo unlocked) now)" ;;
+    quiet)
+      _ds_voice_set '.when_locked = "quiet"'
+      echo "When locked: quiet. Announcements wait until you unlock; auto voice is skipped; an explanation stops." ;;
+    play)
+      _ds_voice_set '.when_locked = "play"'
+      echo "When locked: play. Speech plays whether or not the screen is locked." ;;
+    *) echo "Usage: when-locked [quiet|play]"; return 1 ;;
   esac
 }
 
@@ -196,6 +212,7 @@ case "${1:-status}" in
   auto|replies) auto "${2:-}" ;;
   speed) speed "${2:-}" ;;
   verbosity) verbosity "${2:-}" "${3:-}" ;;
+  when-locked) when_locked "${2:-}" ;;
   say) say ;;
   stop) stop ;;
   test)
@@ -204,6 +221,6 @@ case "${1:-status}" in
       "${DEVSCOPE_PRIVACY:-standard}" ;;
   setup) setup ;;
   *)
-    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|stop]"
+    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|stop]"
     exit 1 ;;
 esac

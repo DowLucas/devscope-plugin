@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.26.0] - 2026-10-07
+
+### Added
+- **Quiet while the screen is locked.** Announcements are held and said soon
+  after you unlock (if the session still waits, no reminder used up), auto voice
+  is skipped, and an explanation stops after the current piece. Detected
+  locally: macOS `ioreg` (`CGSSessionScreenIsLocked`) and the screensaver, Linux
+  logind `LockedHint`; where it cannot tell (SSH, servers, lockers without
+  LockedHint) speech plays as before. `/devscope:voice when-locked play|quiet`
+  (default quiet); `status` shows the screen state.
+
+### Fixed
+- **Pauses and split phrases in spoken summaries.** Every summary over 200
+  characters was voiced as two or three separate recordings, with a pause and
+  restarted intonation between them, and a phrase was cut where no sentence
+  ended in time. Text that fits one request (440 characters, so every normal
+  summary) is now one recording, and longer text is split only between
+  sentences.
+
 ## [0.25.1] - 2026-10-07
 
 ### Changed

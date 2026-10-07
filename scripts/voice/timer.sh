@@ -29,6 +29,12 @@ while :; do
     sleep "$nap"
     continue
   fi
+  # Screen locked: hold the announcement (its reminder count untouched) and
+  # say it soon after the person is back, if the session still waits.
+  if ! _ds_voice_can_play; then
+    sleep "$DS_VOICE_LOCK_POLL"
+    continue
+  fi
   _ds_voice_with_lock _ds_voice_announce_due
   sleep 1
 done
