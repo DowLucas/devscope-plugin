@@ -281,10 +281,10 @@ rm -f "$LOCK"
 wait_spoken 1 5 && [ "$(spoken)" = "cloud needs permission to use Bash." ] && ok "unlocked: the announcement is said" || bad "after unlock" "$(spoken)"
 
 # Auto voice skips a reply finished while locked.
-reset; "$S/voice/cli.sh" auto on >/dev/null; respond '{"text": "summary"}'; touch "$LOCK"
+reset; "$S/voice/cli.sh" auto-default on >/dev/null; respond '{"text": "summary"}'; touch "$LOCK"
 hook response-stop.sh l2 /work/plugin '{hook_event_name: "Stop", last_assistant_message: "Done."}'
 sleep 1.5; [ "$(lines)" = 0 ] && [ -z "$(paths | grep voice-summary)" ] && ok "locked: auto voice skipped, nothing sent" || bad "auto locked" "$(spoken)"
-rm -f "$LOCK"; "$S/voice/cli.sh" auto off >/dev/null
+rm -f "$LOCK"; "$S/voice/cli.sh" auto-default off >/dev/null
 
 # An explanation stops at the next piece once the screen locks.
 reset
@@ -312,9 +312,8 @@ rm -f "$LOCK"
 # 12. Auto voice: reply summaries, independent of the announcer, on every finished turn.
 STOP='{hook_event_name: "Stop", last_assistant_message: "I fixed the reminder timer. All 30 tests pass. Want me to open a PR?"}'
 jq -n '{enabled: false}' > "$CONF"; reset
-"$S/voice/cli.sh" auto >/dev/null; [ "$(jq -r .speak_replies "$CONF")" = true ] && ok "cli auto toggles on" || bad "auto toggle" "$(cat "$CONF")"
-"$S/voice/cli.sh" replies off >/dev/null; [ "$(jq -r .speak_replies "$CONF")" = false ] && ok "replies is an alias for auto" || bad "replies alias" "$(cat "$CONF")"
-"$S/voice/cli.sh" auto on >/dev/null
+"$S/voice/cli.sh" auto-default on >/dev/null; [ "$(jq -r .speak_replies "$CONF")" = true ] && ok "auto-default on sets the default" || bad "auto-default" "$(cat "$CONF")"
+"$S/voice/cli.sh" auto >/dev/null && bad "auto without a session" "accepted" || ok "auto needs to know the session"
 respond '{"text": "plugin: the reminder timer is fixed and tests pass. It asks whether to open a PR."}'
 hook response-stop.sh r1 /work/plugin "$STOP"
 wait_spoken 1 5 && [ "$(spoken)" = "plugin: the reminder timer is fixed and tests pass. It asks whether to open a PR." ] && ok "reply summary spoken (announcer off)" || bad "reply" "$(spoken) $(cat "$HOME/.cache/devscope/voice/voice.log" 2>/dev/null)"
@@ -349,9 +348,34 @@ reset
 hook response-stop.sh r5 /work/plugin "$STOP"; sleep 1.5
 [ "$(lines)" = 0 ] && ok "muted: no reply summary" || bad "reply mute" "$(spoken)"
 "$S/voice/cli.sh" unmute >/dev/null
-"$S/voice/cli.sh" auto off >/dev/null; reset
+"$S/voice/cli.sh" auto-default off >/dev/null; reset
 hook response-stop.sh r6 /work/plugin "$STOP"; sleep 1.5
 [ "$(lines)" = 0 ] && [ "$(hits)" = 0 ] || [ -z "$(paths | grep voice)" ] && ok "auto off: silent" || bad "auto off" "$(spoken)"
+
+# 12b. Auto voice per session (Claude Code window = its claude process).
+AUTO_DIR="$HOME/.cache/devscope/voice/auto"
+sleep 300 & OTHER=$!   # stands in for a second Claude Code window
+"$S/voice/cli.sh" auto-default off >/dev/null; reset; respond '{"text": "per session summary"}'
+DS_VOICE_CLAUDE_PID=$$ "$S/voice/cli.sh" auto on >/dev/null
+[ "$(cat "$AUTO_DIR/$$")" = on ] && ok "auto on is stored for this session only" || bad "auto session" "$(ls "$AUTO_DIR")"
+[ "$(jq -r .speak_replies "$CONF")" = false ] && ok "auto leaves the default alone" || bad "auto default untouched" "$(cat "$CONF")"
+DS_VOICE_CLAUDE_PID=$$ hook response-stop.sh p1 /work/plugin "$STOP"
+wait_spoken 1 5 && ok "this session: reply summarized" || bad "session on" "$(spoken)"
+reset
+DS_VOICE_CLAUDE_PID=$OTHER hook response-stop.sh p2 /work/plugin "$STOP"; sleep 1.5
+[ "$(lines)" = 0 ] && ok "another session (default off): silent" || bad "other session" "$(spoken)"
+"$S/voice/cli.sh" auto-default on >/dev/null; reset
+DS_VOICE_CLAUDE_PID=$OTHER "$S/voice/cli.sh" auto off >/dev/null
+DS_VOICE_CLAUDE_PID=$OTHER hook response-stop.sh p3 /work/plugin "$STOP"; sleep 1.5
+[ "$(lines)" = 0 ] && ok "auto off in a session wins over default on" || bad "session off" "$(spoken)"
+[[ "$(DS_VOICE_CLAUDE_PID=$OTHER "$S/voice/cli.sh" status)" == *"Auto voice: off in this session (set here); new sessions: on"* ]] && ok "status shows this session and the default" || bad "status session" "$(DS_VOICE_CLAUDE_PID=$OTHER "$S/voice/cli.sh" status | grep Auto)"
+DS_VOICE_CLAUDE_PID=$$ "$S/voice/cli.sh" auto >/dev/null; [ "$(cat "$AUTO_DIR/$$")" = off ] && ok "auto alone toggles this session" || bad "auto toggle" "$(cat "$AUTO_DIR/$$")"
+kill "$OTHER" 2>/dev/null; wait "$OTHER" 2>/dev/null || true
+DS_VOICE_CLAUDE_PID=$$ "$S/voice/cli.sh" auto on >/dev/null
+[ ! -f "$AUTO_DIR/$OTHER" ] && ok "closed sessions are forgotten" || bad "prune" "$(ls "$AUTO_DIR")"
+( unset DS_VOICE_CLAUDE_PID; export CLAUDE_PID=$$; . "$S/_helpers.sh"; . "$S/voice/lib.sh"; [ "$(_ds_voice_claude_pid)" = $$ ] ) && ok "uses CLAUDE_PID from Claude Code" || bad "CLAUDE_PID" ""
+DS_VOICE_CLAUDE_PID=$$ "$S/voice/cli.sh" replies off >/dev/null; [ "$(cat "$AUTO_DIR/$$")" = off ] && ok "replies is still an alias for auto" || bad "replies alias" ""
+rm -rf "$AUTO_DIR"; "$S/voice/cli.sh" auto-default off >/dev/null
 
 # 13. stop ends speech in progress.
 mkdir -p "$HOME/.cache/devscope/voice/speakers"
@@ -365,7 +389,7 @@ wait "$SPK" 2>/dev/null || true
 out=$("$S/voice/cli.sh" on); printf '%s' "$out" | grep -q "Voice announcer: on" && ok "cli on prints status" || bad "cli on" ""
 "$S/voice/cli.sh" mute 15m >/dev/null; [ "$(jq -r .mute_until "$CONF")" -gt $(( $(date +%s) + 890 )) ] && ok "cli mute 15m" || bad "mute" "$(cat "$CONF")"
 "$S/voice/cli.sh" mute soon >/dev/null && bad "bad duration" "accepted" || ok "cli rejects a bad duration"
-[[ "$("$S/voice/cli.sh" status)" == *"Auto voice: off"* ]] && ok "status shows auto voice" || bad "status auto" ""
+[[ "$("$S/voice/cli.sh" status)" == *"Auto voice: off in this session; new sessions: off"* ]] && ok "status shows auto voice" || bad "status auto" "$("$S/voice/cli.sh" status | grep Auto)"
 [[ "$("$S/voice/cli.sh" status)" == *"Verbosity: explain normal, auto normal"* ]] && ok "status shows verbosity" || bad "status verbosity" ""
 "$S/voice/cli.sh" verbosity short >/dev/null
 [ "$(jq -c .verbosity "$CONF")" = '{"explain":"short","auto":"short"}' ] && ok "verbosity short sets both" || bad "verbosity both" "$(cat "$CONF")"

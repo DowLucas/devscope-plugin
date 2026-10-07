@@ -15,6 +15,8 @@
 #   say/<id>.json           an explanation waiting to be spoken.
 #   spoke/<claude-pid>      this turn already spoke an explanation, so its
 #                           reply is not summarized on top of it.
+#   auto/<claude-pid>       "on" or "off": auto voice for that Claude Code
+#                           window (/devscope:voice auto), over the default.
 #   speakers/<pid>          running speak.sh processes, for /devscope:voice stop.
 #   progress.json           what the speaking speak.sh is doing, for the
 #                           devscope-live mod's progress bar.
@@ -80,7 +82,7 @@ DS_VOICE_REPLY_TAIL=1100
 # State and log can hold summaries of the user's work: keep them owner-only.
 _ds_voice_mkdirs() {
   ( umask 077; mkdir -p "$DS_VOICE_PENDING" "$DS_VOICE_DIR/replies" "$DS_VOICE_DIR/say" \
-      "$DS_VOICE_DIR/spoke" "$DS_VOICE_DIR/speakers" ) 2>/dev/null
+      "$DS_VOICE_DIR/spoke" "$DS_VOICE_DIR/speakers" "$DS_VOICE_DIR/auto" ) 2>/dev/null
 }
 
 _ds_voice_log() {
@@ -108,8 +110,42 @@ _ds_voice_enabled() {
   [ -f "$DS_VOICE_CONFIG" ] && [ "$(_ds_voice_conf .enabled false)" = "true" ]
 }
 
-_ds_voice_replies_on() {
+# Auto voice is per Claude Code window (its claude process, so it survives
+# /clear): /devscope:voice auto writes auto/<pid>. Windows without one follow
+# the default, voice.json `speak_replies` (/devscope:voice auto-default).
+_ds_voice_auto_default_on() {
   [ -f "$DS_VOICE_CONFIG" ] && [ "$(_ds_voice_conf .speak_replies false)" = "true" ]
+}
+
+_ds_voice_auto_file() {
+  local pid
+  pid=$(_ds_voice_claude_pid)
+  [ -n "$pid" ] && printf '%s/auto/%s' "$DS_VOICE_DIR" "$pid"
+}
+
+# This window's own setting: on, off, or nothing (follows the default).
+_ds_voice_auto_session() {
+  local f
+  f=$(_ds_voice_auto_file)
+  [ -n "$f" ] && [ -f "$f" ] && head -c 3 "$f" | tr -cd 'onf'
+}
+
+# Whether auto voice is on for the calling window.
+_ds_voice_replies_on() {
+  case "$(_ds_voice_auto_session)" in
+    on) return 0 ;;
+    off) return 1 ;;
+  esac
+  _ds_voice_auto_default_on
+}
+
+# Forget the setting of windows that have closed.
+_ds_voice_auto_prune() {
+  local f
+  for f in "$DS_VOICE_DIR/auto/"*; do
+    [ -f "$f" ] || continue
+    kill -0 "$(basename "$f")" 2>/dev/null || rm -f "$f"
+  done
 }
 
 # How detailed spoken output is, per mode (explain, auto): short | normal | long.
@@ -383,6 +419,11 @@ _ds_voice_claude_pid() {
     case "$DS_VOICE_CLAUDE_PID" in *[!0-9]*) ;; *) printf '%s' "$DS_VOICE_CLAUDE_PID" ;; esac
     return
   fi
+  # Claude Code tells its commands and hooks its own PID.
+  case "${CLAUDE_PID:-}" in
+    ''|*[!0-9]*) ;;
+    *) if kill -0 "$CLAUDE_PID" 2>/dev/null; then printf '%s' "$CLAUDE_PID"; return; fi ;;
+  esac
   while [ "$p" -gt 1 ] && [ "$i" -lt 12 ]; do
     case "$(ps -o comm= -p "$p" 2>/dev/null)" in
       claude|*/claude) printf '%s' "$p"; return ;;

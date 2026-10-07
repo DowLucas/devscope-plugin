@@ -2,7 +2,7 @@
 # /devscope:voice — turn the voice announcer and auto voice (a spoken summary of every reply) on/off,
 # mute, test, stop speech, install the Piper voice; `say` speaks text from
 # stdin (/devscope:voice explain).
-# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|model [name|default]|stop|say]
+# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|auto-default [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|model [name|default]|stop|say]
 set -uo pipefail
 VOICE_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
@@ -24,7 +24,7 @@ status() {
        "failed $(_ds_voice_delay failed)s, finished $(_ds_voice_delay finished)s" \
        "($( [ "$(_ds_voice_conf .announce_finished false)" = true ] && echo announced || echo not announced))"
   echo "Reminders: every $(_ds_voice_int .reminder_interval "$DS_VOICE_REMINDER_INTERVAL")s, at most $(_ds_voice_int .max_reminders "$DS_VOICE_MAX_REMINDERS")"
-  echo "Auto voice: $(_ds_voice_replies_on && echo on || echo off)"
+  echo "Auto voice: $(_ds_voice_replies_on && echo on || echo off) in this session$( [ -n "$(_ds_voice_auto_session)" ] && echo " (set here)"); new sessions: $(_ds_voice_auto_default_on && echo on || echo off)"
   echo "Verbosity: explain $(_ds_voice_verbosity explain), auto $(_ds_voice_verbosity auto)"
   echo "Screen: $(_ds_voice_screen_locked && echo locked || echo unlocked); when locked: $(_ds_voice_conf .when_locked quiet)"
   mute=$(_ds_voice_int .mute_until 0)
@@ -38,27 +38,58 @@ status() {
   esac
 }
 
-# Auto voice: a spoken summary whenever Claude finishes a reply (`replies` is its old name).
+# Auto voice: a spoken summary whenever Claude finishes a reply (`replies` is
+# its old name). `auto` is this Claude Code window; `auto-default` is the
+# setting for windows where you have not used `auto`.
+auto_privacy_note() {
+  if [ "${DEVSCOPE_PRIVACY:-standard}" = "private" ]; then
+    echo "Private mode: replies stay on this machine, so you hear only which project finished."
+  else
+    echo "The reply is sent to your DevScope server to summarize; nothing is stored."
+  fi
+  if _ds_voice_muted; then echo "Note: voice is muted; run '/devscope:voice unmute'."; fi
+}
+
 auto() {
-  local want="${1:-}"
+  local want="${1:-}" f
+  _ds_voice_mkdirs
+  _ds_voice_auto_prune
+  f=$(_ds_voice_auto_file)
+  if [ -z "$f" ]; then
+    echo "Cannot tell which Claude Code session this is; use 'auto-default on|off' for all sessions."
+    return 1
+  fi
   if [ -z "$want" ]; then
     _ds_voice_replies_on && want=off || want=on
   fi
   case "$want" in
     on)
+      printf 'on' > "$f"
+      echo "Auto voice in this session: on. When Claude finishes a reply here, you hear a short summary of it."
+      auto_privacy_note ;;
+    off)
+      printf 'off' > "$f"
+      echo "Auto voice in this session: off." ;;
+    *) echo "Usage: auto [on|off] (this session), auto-default [on|off] (new sessions)"; return 1 ;;
+  esac
+  echo "New sessions: $(_ds_voice_auto_default_on && echo on || echo off) (change with 'auto-default on|off')."
+}
+
+auto_default() {
+  local want="${1:-}"
+  if [ -z "$want" ]; then
+    echo "Auto voice for new sessions: $(_ds_voice_auto_default_on && echo on || echo off)"
+    return 0
+  fi
+  case "$want" in
+    on)
       _ds_voice_set '.speak_replies = true'
-      echo "Auto voice: on. Whenever Claude finishes a reply, you hear a short summary of it."
-      if [ "${DEVSCOPE_PRIVACY:-standard}" = "private" ]; then
-        echo "Private mode: replies stay on this machine, so you hear only which project finished."
-      else
-        echo "The reply is sent to your DevScope server to summarize; nothing is stored."
-      fi
-      if _ds_voice_muted; then echo "Note: voice is muted; run '/devscope:voice unmute'."; fi ;;
+      echo "Auto voice for new sessions: on. Sessions where you used 'auto' keep their own setting."
+      auto_privacy_note ;;
     off)
       _ds_voice_set '.speak_replies = false'
-      rm -f "$DS_VOICE_DIR/replies/"*.json 2>/dev/null
-      echo "Auto voice: off" ;;
-    *) echo "Usage: auto [on|off]"; return 1 ;;
+      echo "Auto voice for new sessions: off. Sessions where you used 'auto' keep their own setting." ;;
+    *) echo "Usage: auto-default [on|off]"; return 1 ;;
   esac
 }
 
@@ -239,6 +270,7 @@ case "${1:-status}" in
       *) echo "Usage: finished on|off"; exit 1 ;;
     esac ;;
   auto|replies) auto "${2:-}" ;;
+  auto-default) auto_default "${2:-}" ;;
   speed) speed "${2:-}" ;;
   verbosity) verbosity "${2:-}" "${3:-}" ;;
   when-locked) when_locked "${2:-}" ;;
@@ -251,6 +283,6 @@ case "${1:-status}" in
       "${DEVSCOPE_PRIVACY:-standard}" ;;
   setup) setup ;;
   *)
-    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|model [name|default]|stop]"
+    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|auto-default [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|model [name|default]|stop]"
     exit 1 ;;
 esac

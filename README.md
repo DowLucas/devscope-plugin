@@ -240,7 +240,12 @@ Long speech is voiced in as few pieces as possible: text that fits one request (
 
 ### Auto voice
 
-`/devscope:voice auto` toggles a short spoken summary whenever Claude finishes a reply: the outcome first, then anything you need to decide, in two or three sentences. It works with the announcer on or off. The reply is sent to your DevScope server to summarize and is not stored; in `private` mode you only hear which project finished, voiced locally.
+Auto voice is a short spoken summary whenever Claude finishes a reply: the outcome first, then anything you need to decide, in two or three sentences. It works with the announcer on or off, and it is **per session**:
+
+- `/devscope:voice auto` turns it on or off for the session you type it in (`auto on`, `auto off`; plain `auto` toggles). It lasts as long as that Claude Code window, `/clear` included.
+- `/devscope:voice auto-default on|off` is the setting for every session where you have not used `auto` (off unless you turn it on).
+
+`/devscope:voice status` shows both. The reply is sent to your DevScope server to summarize and is not stored; in `private` mode you only hear which project finished, voiced locally.
 
 ### Explain it out loud
 
