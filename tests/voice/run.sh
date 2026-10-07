@@ -171,6 +171,10 @@ configure; respond "RIFFfake" "audio/wav"; reset_hits
 [ "$(last .path)" = "/api/ai/voice-audio" ] && [ "$(last .key)" = "test-key" ] && ok "server voice: calls voice-audio with the API key" || bad "server path" "$(last .)"
 [ "$(last .body.text)/$(last .body.voice)/$(last .body.speed)" = "cloud needs you/am_michael/1.2" ] && ok "server voice: default am_michael at 1.2x" || bad "server body" "$(last .body)"
 [ "$(last .body.volume)" = "null" ] && ok "server voice: volume left to the server by default" || bad "server volume default" "$(last .body)"
+[ "$(last .body.model)" = "null" ] && ok "server voice: no model sent by default (server's default voice)" || bad "server model default" "$(last .body)"
+configure '.model = "kokoro"'; server_speak standard >/dev/null
+[ "$(last .body.model)" = "kokoro" ] && ok "server voice: the chosen model is sent" || bad "server model" "$(last .body)"
+configure; respond "RIFFfake" "audio/wav"
 configure '.voice = "af_heart" | .speed = 1.2 | .volume = 2.5'
 server_speak standard >/dev/null; [ "$(last .body.voice)/$(last .body.speed)/$(last .body.volume)" = "af_heart/1.2/2.5" ] && ok "server voice: voice, speed and volume from voice.json" || bad "server config" "$(last .body)"
 configure; reset_hits
@@ -297,6 +301,12 @@ reset; "$S/voice/cli.sh" when-locked play >/dev/null; touch "$LOCK"
 ( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_can_play ) && bad "quiet" "plays while locked" || ok "when-locked quiet: silent while locked"
 [[ "$("$S/voice/cli.sh" status)" == *"Screen: locked; when locked: quiet"* ]] && ok "status shows the screen and the setting" || bad "status screen" "$("$S/voice/cli.sh" status | grep Screen)"
 "$S/voice/cli.sh" when-locked loud >/dev/null && bad "bad when-locked" "accepted" || ok "when-locked rejects an unknown value"
+respond '{"models": ["chatterbox", "kokoro"]}'
+[[ "$("$S/voice/cli.sh" model)" == *"This server offers: chatterbox kokoro"* ]] && [ "$(last .path)" = /api/ai/voice-models ] && ok "model lists the server's voices" || bad "model list" "$("$S/voice/cli.sh" model)"
+"$S/voice/cli.sh" model kokoro >/dev/null; [ "$(jq -r .model "$CONF")" = kokoro ] && ok "model kokoro is stored" || bad "model set" "$(cat "$CONF")"
+"$S/voice/cli.sh" model piper >/dev/null && bad "unknown model" "accepted" || ok "model rejects a voice the server does not offer"
+"$S/voice/cli.sh" model "../x" >/dev/null && bad "bad model" "accepted" || ok "model rejects a malformed name"
+"$S/voice/cli.sh" model default >/dev/null; [ "$(jq -r '.model // "unset"' "$CONF")" = unset ] && ok "model default clears the choice" || bad "model default" "$(cat "$CONF")"
 rm -f "$LOCK"
 
 # 12. Auto voice: reply summaries, independent of the announcer, on every finished turn.

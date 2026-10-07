@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.27.0] - 2026-10-07
+
+### Added
+- **`/devscope:voice model [name|default]`** chooses which of the server's
+  voices speaks. Without a name it lists them (`/api/ai/voice-models`, the
+  first is the server's default); the choice is sent with every request as
+  `model`, and `model default` goes back to the server's choice. The homelab
+  now offers Chatterbox Turbo (the new default, on its Arc B580) and Kokoro
+  (the previous voice, on its CPU, also the server's fallback when the GPU is
+  busy). Needs a DevScope server with named voices (DowLucas/devscope); an
+  older one ignores the choice.
+
 ## [0.26.0] - 2026-10-07
 
 ### Added

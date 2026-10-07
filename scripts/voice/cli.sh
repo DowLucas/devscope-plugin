@@ -2,7 +2,7 @@
 # /devscope:voice — turn the voice announcer and auto voice (a spoken summary of every reply) on/off,
 # mute, test, stop speech, install the Piper voice; `say` speaks text from
 # stdin (/devscope:voice explain).
-# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|stop|say]
+# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|model [name|default]|stop|say]
 set -uo pipefail
 VOICE_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
@@ -18,7 +18,7 @@ status() {
   echo "Voice announcer: $(_ds_voice_enabled && echo on || echo off)"
   echo "Engine: $(_ds_voice_engine) (setting: $(_ds_voice_conf .engine auto))"
   [ "$(_ds_voice_engine)" = "server" ] && \
-    echo "Server voice: $(_ds_voice_conf .voice "$DS_VOICE_SERVER_VOICE") via $DEVSCOPE_URL (private sessions and outages use a local voice)"
+    echo "Server voice: $(_ds_voice_conf .model "server default") via $DEVSCOPE_URL (private sessions and outages use a local voice)"
   echo "Speed: $(_ds_voice_speed_text)"
   echo "Delays: permission $(_ds_voice_delay permission)s, question $(_ds_voice_delay question)s," \
        "failed $(_ds_voice_delay failed)s, finished $(_ds_voice_delay finished)s" \
@@ -60,6 +60,35 @@ auto() {
       echo "Auto voice: off" ;;
     *) echo "Usage: auto [on|off]"; return 1 ;;
   esac
+}
+
+# Which of the server's voices speaks: model [name|default]. No name lists them.
+model() {
+  local name="${1:-}" offered
+  offered=$(_ds_api GET /api/ai/voice-models "" 5 2>/dev/null | jq -r '.models // [] | join(" ")' 2>/dev/null)
+  if [ -z "$name" ]; then
+    echo "Server voice: $(_ds_voice_conf .model "server default")"
+    if [ -n "$offered" ]; then
+      echo "This server offers: $offered (the first is its default)"
+    else
+      echo "Could not list the server's voices; run '/devscope:setup' if the API key is missing."
+    fi
+    return 0
+  fi
+  if [ "$name" = default ]; then
+    _ds_voice_set 'del(.model)'
+    echo "Server voice: server default${offered:+ (${offered%% *})}"
+    return 0
+  fi
+  case "$name" in
+    *[!a-z0-9-]*) echo "Usage: model [name|default]"; return 1 ;;
+  esac
+  if [ -n "$offered" ] && ! printf ' %s ' "$offered" | grep -q " $name "; then
+    echo "This server has no voice named '$name'. It offers: $offered"
+    return 1
+  fi
+  _ds_voice_set --arg m "$name" '.model = $m'
+  echo "Server voice: $name"
 }
 
 # What happens while the screen is locked: quiet (default) holds announcements
@@ -213,6 +242,7 @@ case "${1:-status}" in
   speed) speed "${2:-}" ;;
   verbosity) verbosity "${2:-}" "${3:-}" ;;
   when-locked) when_locked "${2:-}" ;;
+  model) model "${2:-}" ;;
   say) say ;;
   stop) stop ;;
   test)
@@ -221,6 +251,6 @@ case "${1:-status}" in
       "${DEVSCOPE_PRIVACY:-standard}" ;;
   setup) setup ;;
   *)
-    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|stop]"
+    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|model [name|default]|stop]"
     exit 1 ;;
 esac
