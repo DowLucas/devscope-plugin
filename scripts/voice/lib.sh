@@ -106,6 +106,12 @@ _ds_voice_int() {
   printf '%s' "$v"
 }
 
+# A number from voice.json: its default when unset or not a number, kept within min..max.
+_ds_voice_num() {  # key default min max
+  _ds_voice_conf "$1" "$2" | awk -v d="$2" -v lo="$3" -v hi="$4" '
+    { v = $0 + 0; if ($0 !~ /^[0-9]*\.?[0-9]+$/) v = d; if (v < lo) v = lo; if (v > hi) v = hi; print v }'
+}
+
 _ds_voice_enabled() {
   [ -f "$DS_VOICE_CONFIG" ] && [ "$(_ds_voice_conf .enabled false)" = "true" ]
 }
@@ -207,10 +213,11 @@ _ds_voice_speed_preset() {
 }
 
 # The speech rate, clamped to what the server voice accepts (0.5-2).
-_ds_voice_speed() {
-  _ds_voice_conf .speed "$DS_VOICE_SPEED_NORMAL" | awk -v d="$DS_VOICE_SPEED_NORMAL" '
-    { v = $0 + 0; if ($0 !~ /^[0-9]*\.?[0-9]+$/) v = d; if (v < 0.5) v = 0.5; if (v > 2) v = 2; print v }'
-}
+_ds_voice_speed() { _ds_voice_num .speed "$DS_VOICE_SPEED_NORMAL" 0.5 2; }
+
+# How loud this computer plays DevScope's speech (voice.json `playback_volume`,
+# 1 = as received, up to 3): louder speech without turning up every other sound.
+_ds_voice_playback_volume() { _ds_voice_num .playback_volume 1 0.5 3; }
 
 # The preset a rate matches, or "custom".
 _ds_voice_speed_name() {
@@ -707,13 +714,19 @@ _ds_voice_run() {
   fi
 }
 
-_ds_voice_play() {
-  local p
+# Plays at the playback volume; aplay has no volume option.
+_ds_voice_play() {  # wav
+  local p vol
+  vol=$(_ds_voice_playback_volume)
   for p in paplay pw-play aplay afplay; do
-    if command -v "$p" >/dev/null 2>&1; then
-      _ds_voice_run "$p" "$1" >/dev/null 2>&1
-      return
-    fi
+    command -v "$p" >/dev/null 2>&1 || continue
+    case "$p" in
+      paplay) _ds_voice_run paplay --volume="$(awk -v v="$vol" 'BEGIN { printf "%d", v * 65536 }')" "$1" ;;
+      pw-play) _ds_voice_run pw-play --volume "$vol" "$1" ;;
+      afplay) _ds_voice_run afplay -v "$vol" "$1" ;;
+      *) _ds_voice_run "$p" "$1" ;;
+    esac >/dev/null 2>&1
+    return
   done
   return 1
 }
