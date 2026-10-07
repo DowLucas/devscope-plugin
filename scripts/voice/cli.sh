@@ -2,7 +2,7 @@
 # /devscope:voice — turn the voice announcer and auto voice (a spoken summary of every reply) on/off,
 # mute, test, stop speech, install the Piper voice; `say` speaks text from
 # stdin (/devscope:voice explain).
-# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|auto-default [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|model [name|default]|stop|say]
+# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|auto-default [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|model [name|local|default]|stop|say]
 set -uo pipefail
 VOICE_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
@@ -17,8 +17,10 @@ status() {
   local mute pending
   echo "Voice announcer: $(_ds_voice_enabled && echo on || echo off)"
   echo "Engine: $(_ds_voice_engine) (setting: $(_ds_voice_conf .engine auto))"
-  [ "$(_ds_voice_engine)" = "server" ] && \
-    echo "Server voice: $(_ds_voice_conf .model "server default") via $DEVSCOPE_URL (private sessions and outages use a local voice)"
+  case "$(_ds_voice_engine)/$(_ds_voice_conf .engine auto)" in
+    server/*) echo "Voice: $(current_voice) via $DEVSCOPE_URL (private sessions and outages use a local voice)" ;;
+    */system) echo "Voice: $(current_voice)" ;;
+  esac
   echo "Speed: $(_ds_voice_speed_text)"
   echo "Delays: permission $(_ds_voice_delay permission)s, question $(_ds_voice_delay question)s," \
        "failed $(_ds_voice_delay failed)s, finished $(_ds_voice_delay finished)s" \
@@ -93,33 +95,52 @@ auto_default() {
   esac
 }
 
-# Which of the server's voices speaks: model [name|default]. No name lists them.
+# Which voice speaks: model [name|local|default]. A server voice by name, or
+# `local` for this computer's own voice (`say` on macOS, which speaks with the
+# System voice set in Accessibility > Spoken Content, a Siri voice included).
+# No name lists the choices.
+LOCAL_HINT="On a Mac it uses your System voice: System Settings > Accessibility > Spoken Content > System voice (pick a Siri voice there to hear Siri)."
+
+current_voice() {
+  if [ "$(_ds_voice_conf .engine auto)" = system ]; then
+    echo "local (this computer's own voice)"
+  else
+    echo "$(_ds_voice_conf .model "server default")"
+  fi
+}
+
 model() {
   local name="${1:-}" offered
+  if [ "$name" = local ]; then
+    _ds_voice_set '.engine = "system"'
+    echo "Voice: local. Speech uses this computer's own voice; the DevScope server still writes the summaries."
+    echo "$LOCAL_HINT"
+    return 0
+  fi
   offered=$(_ds_api GET /api/ai/voice-models "" 5 2>/dev/null | jq -r '.models // [] | join(" ")' 2>/dev/null)
   if [ -z "$name" ]; then
-    echo "Server voice: $(_ds_voice_conf .model "server default")"
+    echo "Voice: $(current_voice)"
     if [ -n "$offered" ]; then
-      echo "This server offers: $offered (the first is its default)"
+      echo "Choices: $offered (server voices, the first is its default), or local (this computer's own voice)"
     else
-      echo "Could not list the server's voices; run '/devscope:setup' if the API key is missing."
+      echo "Choices: local (this computer's own voice). Could not list the server's voices; run '/devscope:setup' if the API key is missing."
     fi
     return 0
   fi
   if [ "$name" = default ]; then
-    _ds_voice_set 'del(.model)'
-    echo "Server voice: server default${offered:+ (${offered%% *})}"
+    _ds_voice_set 'del(.model) | .engine = "auto"'
+    echo "Voice: server default${offered:+ (${offered%% *})}"
     return 0
   fi
   case "$name" in
-    *[!a-z0-9-]*) echo "Usage: model [name|default]"; return 1 ;;
+    *[!a-z0-9-]*) echo "Usage: model [name|local|default]"; return 1 ;;
   esac
   if [ -n "$offered" ] && ! printf ' %s ' "$offered" | grep -q " $name "; then
-    echo "This server has no voice named '$name'. It offers: $offered"
+    echo "This server has no voice named '$name'. Choices: $offered, or local"
     return 1
   fi
-  _ds_voice_set --arg m "$name" '.model = $m'
-  echo "Server voice: $name"
+  _ds_voice_set --arg m "$name" '.model = $m | .engine = "auto"'
+  echo "Voice: $name"
 }
 
 # What happens while the screen is locked: quiet (default) holds announcements
@@ -283,6 +304,6 @@ case "${1:-status}" in
       "${DEVSCOPE_PRIVACY:-standard}" ;;
   setup) setup ;;
   *)
-    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|auto-default [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|model [name|default]|stop]"
+    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|auto [on|off]|auto-default [on|off]|speed [slow|normal|fast|<0.5-2>]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|model [name|local|default]|stop]"
     exit 1 ;;
 esac

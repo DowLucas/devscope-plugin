@@ -212,7 +212,8 @@ claude plugin disable devscope@devscope                  # Disable
   the backend fails; three or more due within 15 s become one sentence. Speech uses the
   server voice by default (`/api/ai/voice-audio`; the server picks among its named voices: on the
   homelab Chatterbox Turbo on the B580, with Kokoro as fallback; voice.json `model` asks for one by name
-  via `/devscope:voice model`, sent as `model`, omitted for the server's default; `voice` is a Kokoro
+  via `/devscope:voice model`, sent as `model`, omitted for the server's default; `model local` sets
+  `engine: system` instead, i.e. macOS `say` with the System voice (Siri voices included), no `-v`; `voice` is a Kokoro
   voice name, default `am_michael`; `speed` 1.2× by default, presets slow 1.0 / normal 1.2 / fast 1.5,
   or any number 0.5-2, via `/devscope:voice speed`, applied to every engine), never for `private` sessions; if the server has
   no voice or is unreachable it falls back to Piper if installed (`/devscope:voice setup`),
