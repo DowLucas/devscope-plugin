@@ -24,7 +24,10 @@ function backend(on: On, answers: Record<string, unknown> = {}): Call[] {
 /** What reached the engine beneath the plugin. */
 type Seen = { submitted: string[]; suggested: string[]; aborted: string[] }
 
-function setup(on: On, env: Record<string, string> = {}) {
+/** Files the plugin may read, by absolute path; a missing one rejects. */
+type Files = Record<string, string>
+
+function setup(on: On, env: Record<string, string> = {}, files: Files = {}) {
   mock.env(on, { DEVSCOPE_URL: URL_BASE, DEVSCOPE_API_KEY: 'key', HOME: '/home/test', ...env })
   mock.store(on)
   const seen: Seen = { submitted: [], suggested: [], aborted: [] }
@@ -45,6 +48,7 @@ function setup(on: On, env: Record<string, string> = {}) {
   on('session.cwd', () => ({ value: '/work/devscope' }))
   // No ~/.config/devscope/config: the environment above is the whole config.
   on('fs.exists', () => ({ value: false }))
+  on('fs.read', (_$, e) => (e.path in files ? { value: files[e.path] } : { deny: 'ENOENT' }))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
@@ -331,6 +335,93 @@ describe('fail open', () => {
     expect(seen.suggested).toEqual([])
     const ui = await $.ui.mount({ ...ABOVE_PROMPT, surface: 'terminal' })
     expect(await ui.find({ key: 'step-back' })).toBeUndefined()
+    await ui.unmount()
+  })
+})
+
+describe('voice progress bar', () => {
+  const PROGRESS = '/home/test/.cache/devscope/voice/progress.json'
+  const progress = (at: number, over: Record<string, unknown> = {}) =>
+    JSON.stringify({ kind: 'explain', project: 'plugin', phase: 'speaking', piece: 1, pieces: 4, pieceMs: 10_000, at, pid: 4242, ...over })
+  const run = (on: On) => {
+    const ran: string[][] = []
+    on('process.run', (_$, e) => (ran.push([...e.argv]), {
+      value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+    }))
+    return ran
+  }
+
+  test('shows while the speaker speaks, and Stop ends its process group', async ($, on) => {
+    const files: Files = {}
+    const { clock } = setup(on, {}, files)
+    const ran = run(on)
+    await $.session.start(SESSION)
+    files[PROGRESS] = progress(clock.now())
+    await clock.advance(1000)
+
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ ...ABOVE_PROMPT, surface })
+      expect(await ui.find({ type: 'Text', text: 'plugin · explaining 2/4' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /\u283f/ })).toBeDefined()
+      expect(await ui.find({ key: 'voice-stop' })).toBeDefined()
+      await ui.unmount()
+    }
+
+    const ui = await $.ui.mount({ ...ABOVE_PROMPT, surface: 'terminal' })
+    await ui.press({ key: 'voice-stop' })
+    expect(ran).toEqual([['kill', '-TERM', '--', '-4242']])
+    await ui.unmount()
+  })
+
+  test('animates while the audio is made, and goes away when the speaker is done', async ($, on) => {
+    const files: Files = {}
+    const { clock } = setup(on, {}, files)
+    await $.session.start(SESSION)
+    files[PROGRESS] = progress(clock.now(), { phase: 'voicing', pieces: 4, pieceMs: 0 })
+    await clock.advance(1000)
+    await clock.advance(6 * 120)
+    const ui = await $.ui.mount({ ...ABOVE_PROMPT, surface: 'terminal' })
+    expect(await ui.find({ type: 'Text', text: 'plugin · creating audio' })).toBeDefined()
+    await ui.unmount()
+
+    delete files[PROGRESS]
+    await clock.advance(120)
+    const after = await $.ui.mount({ ...ABOVE_PROMPT, surface: 'terminal' })
+    expect(await after.find({ key: 'voice-stop' })).toBeUndefined()
+    await after.unmount()
+  })
+
+  test('ignores a file a killed speaker left behind', async ($, on) => {
+    const files: Files = {}
+    const { clock } = setup(on, {}, files)
+    await clock.advance(120_000)
+    files[PROGRESS] = progress(clock.now() - 60_000)
+    await $.session.start(SESSION)
+    await clock.advance(1000)
+    const ui = await $.ui.mount({ ...ABOVE_PROMPT, surface: 'terminal' })
+    expect(await ui.find({ key: 'voice-stop' })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('stays off when turned off', { options: { voiceProgress: false } }, async ($, on) => {
+    const files: Files = {}
+    const { clock } = setup(on, {}, files)
+    await $.session.start(SESSION)
+    files[PROGRESS] = progress(clock.now())
+    await clock.advance(1000)
+    const ui = await $.ui.mount({ ...ABOVE_PROMPT, surface: 'terminal' })
+    expect(await ui.find({ key: 'voice-stop' })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('stays off in headless sessions', async ($, on) => {
+    const files: Files = {}
+    const { clock } = setup(on, {}, files)
+    await $.session.start({ ...SESSION, isInteractive: false })
+    files[PROGRESS] = progress(clock.now())
+    await clock.advance(1000)
+    const ui = await $.ui.mount({ ...ABOVE_PROMPT, surface: 'terminal' })
+    expect(await ui.find({ key: 'voice-stop' })).toBeUndefined()
     await ui.unmount()
   })
 })

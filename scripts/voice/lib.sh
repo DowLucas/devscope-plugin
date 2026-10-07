@@ -16,6 +16,8 @@
 #   spoke/<claude-pid>      this turn already spoke an explanation, so its
 #                           reply is not summarized on top of it.
 #   speakers/<pid>          running speak.sh processes, for /devscope:voice stop.
+#   progress.json           what the speaking speak.sh is doing, for the
+#                           devscope-live mod's progress bar.
 #   speak.lock              serializes speech across all sessions.
 #   voice.log               errors and announcements.
 
@@ -24,6 +26,7 @@ DS_VOICE_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/devscope/voice.json"
 DS_VOICE_DIR="${HOME}/.cache/devscope/voice"
 DS_VOICE_PENDING="$DS_VOICE_DIR/pending"
 DS_VOICE_LOG="$DS_VOICE_DIR/voice.log"
+DS_VOICE_PROGRESS="$DS_VOICE_DIR/progress.json"
 DS_VOICE_DATA="${XDG_DATA_HOME:-$HOME/.local/share}/devscope/piper"
 DS_VOICE_DEFAULT_MODEL="$DS_VOICE_DATA/en_US-lessac-medium.onnx"
 # A marker this old belongs to a session that most likely died without
@@ -674,6 +677,37 @@ _ds_voice_speak_local() {  # text
 
 # --- Long speech (explanations, reply summaries) ---
 
+# Progress for the devscope-live mod's bar, written only under speak.sh (which
+# sets DS_VOICE_PROGRESS_KIND) and only by the process holding the speak lock.
+# `at` is when this phase or piece began (epoch ms), `pieceMs` how long the
+# piece plays (0 when unknown), `pid` the speak.sh process group to stop.
+_ds_voice_progress() {  # phase [piece pieces [piece-ms]]
+  [ -n "${DS_VOICE_PROGRESS_KIND:-}" ] || return 0
+  local tmp="$DS_VOICE_PROGRESS.tmp.$$"
+  jq -n --arg kind "$DS_VOICE_PROGRESS_KIND" --arg project "${DS_VOICE_PROGRESS_PROJECT:-}" \
+    --arg phase "$1" --argjson piece "${2:-0}" --argjson pieces "${3:-0}" --argjson ms "${4:-0}" \
+    --argjson at "$(( $(_ds_now_ns) / 1000000 ))" --argjson pid "$$" \
+    '{kind: $kind, project: $project, phase: $phase, piece: $piece, pieces: $pieces,
+      pieceMs: $ms, at: $at, pid: $pid}' > "$tmp" 2>/dev/null && mv "$tmp" "$DS_VOICE_PROGRESS" || rm -f "$tmp"
+}
+
+# Remove the progress file if this process wrote it.
+_ds_voice_progress_done() {
+  [ "$(jq -r '.pid' "$DS_VOICE_PROGRESS" 2>/dev/null)" = "$$" ] && rm -f "$DS_VOICE_PROGRESS"
+  return 0
+}
+
+# How long a WAV file plays, in milliseconds (0 when the header is unreadable).
+_ds_voice_wav_ms() {
+  local rate size
+  rate=$(od -An -t u4 -j 28 -N 4 "$1" 2>/dev/null | tr -d ' ')
+  size=$(wc -c < "$1" 2>/dev/null | tr -d ' ')
+  case "$rate" in ''|*[!0-9]*) echo 0; return ;; esac
+  case "$size" in ''|*[!0-9]*) echo 0; return ;; esac
+  [ "$rate" -gt 0 ] && [ "$size" -gt 44 ] || { echo 0; return; }
+  echo $(( (size - 44) * 1000 / rate ))
+}
+
 # Split a text into pieces of at most DS_VOICE_CHUNK_MAX characters (the first
 # at most DS_VOICE_CHUNK_FIRST), ending at sentence ends where possible. One
 # piece per line; the text is cut after DS_VOICE_LONG_MAX characters.
@@ -709,12 +743,21 @@ _ds_voice_speak_long() {  # text [privacy]
   [ "$engine" = "off" ] && return 0
   if [ -n "${DS_VOICE_SPEAK_LOG:-}" ] || [ "$privacy" = "private" ] || [ -z "${DEVSCOPE_API_KEY:-}" ] || \
      { [ "$engine" != "auto" ] && [ "$engine" != "server" ]; }; then
-    for chunk in "${chunks[@]}"; do _ds_voice_speak "$chunk" "$privacy"; done
+    while [ "$i" -lt "$n" ]; do
+      _ds_voice_progress speaking "$i" "$n"
+      _ds_voice_speak "${chunks[$i]}" "$privacy"
+      i=$((i + 1))
+    done
     return 0
   fi
   dir=$(mktemp -d "${TMPDIR:-/tmp}/ds-voice.XXXXXX") || return 0
+  _ds_voice_progress voicing 0 "$n"
   if ! _ds_voice_server_fetch "${chunks[0]}" "$privacy" "$dir/0.wav"; then
-    for chunk in "${chunks[@]}"; do _ds_voice_speak_local "$chunk"; done
+    while [ "$i" -lt "$n" ]; do
+      _ds_voice_progress speaking "$i" "$n"
+      _ds_voice_speak_local "${chunks[$i]}"
+      i=$((i + 1))
+    done
     rm -rf "$dir"
     return 0
   fi
@@ -724,10 +767,15 @@ _ds_voice_speak_long() {  # text [privacy]
       _ds_voice_server_fetch "${chunks[$((i + 1))]}" "$privacy" "$dir/$((i + 1)).wav" &
       next=$!
     fi
+    _ds_voice_progress speaking "$i" "$n" "$(_ds_voice_wav_ms "$dir/$i.wav")"
     _ds_voice_play "$dir/$i.wav"
     i=$((i + 1))
     if [ -n "$next" ] && ! wait "$next"; then
-      while [ "$i" -lt "$n" ]; do _ds_voice_speak_local "${chunks[$i]}"; i=$((i + 1)); done
+      while [ "$i" -lt "$n" ]; do
+        _ds_voice_progress speaking "$i" "$n"
+        _ds_voice_speak_local "${chunks[$i]}"
+        i=$((i + 1))
+      done
     fi
   done
   rm -rf "$dir"

@@ -185,6 +185,10 @@ that brings DevScope into the live session:
   it, and whether its PRs merged is checked with your own `gh`. An optional
   `DevScope-Session:` trailer (off by default) marks Claude's commits and PRs.
 
+- **Voice progress bar**: while DevScope voice summarizes, creates or speaks
+  audio, a colored 6-dot braille bar above the prompt shows how far along it is,
+  with a *Stop* button.
+
 ```bash
 /plugin install devscope-live@devscope
 ```

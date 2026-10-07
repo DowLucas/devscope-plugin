@@ -81,7 +81,8 @@ say() {
   fi
   _ds_voice_mkdirs
   job="$DS_VOICE_DIR/say/$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "s-$(_ds_now_ns)").json"
-  ( umask 077; jq -n --arg t "$text" --arg p "${DEVSCOPE_PRIVACY:-standard}" '{text: $t, privacy: $p}' > "$job" ) || return 1
+  ( umask 077; jq -n --arg t "$text" --arg p "${DEVSCOPE_PRIVACY:-standard}" --arg project "$(basename "$PWD")" \
+      '{text: $t, privacy: $p, project: $project}' > "$job" ) || return 1
   # This turn spoke: its reply is not summarized on top (reply summaries).
   pid=$(_ds_voice_claude_pid)
   [ -n "$pid" ] && : > "$DS_VOICE_DIR/spoke/$pid"
@@ -100,7 +101,7 @@ stop() {
     if kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null; then n=$((n + 1)); fi
     rm -f "$f"
   done
-  rm -f "$DS_VOICE_DIR/say/"*.json "$DS_VOICE_DIR/replies/"*.json 2>/dev/null
+  rm -f "$DS_VOICE_DIR/say/"*.json "$DS_VOICE_DIR/replies/"*.json "$DS_VOICE_PROGRESS" 2>/dev/null
   # macOS lock: a killed holder leaves its directory behind.
   [ "$n" -gt 0 ] && rmdir "$DS_VOICE_DIR/speak.lock.d" 2>/dev/null
   echo "Stopped ($n speaking)."

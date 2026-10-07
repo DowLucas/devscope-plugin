@@ -59,7 +59,7 @@ A separate plugin in the same marketplace (`source: ./mods/devscope-live`), buil
 Claude Code's function hooks ("mods", early access; verified on 2.1.291). Design and the
 `/api/live` backend contract: `docs/specs/2026-10-06-devscope-live-design.md`. It adds
 in-session features (team prompts, team skills, stuck band, outcome labels, commit/PR
-links); the Bash plugin still ships all events. It has its own version in its
+links, the voice progress bar); the Bash plugin still ships all events. It has its own version in its
 `plugin.json` and its `marketplace.json` entry (keep both in sync); changing it does not
 require bumping the `devscope` plugin.
 
@@ -229,6 +229,12 @@ claude plugin disable devscope@devscope                  # Disable
   the next piece while the current one plays. `say` touches `spoke/<claude-pid>` so that
   turn's reply is not also summarized; the Stop hook consumes it, a new prompt clears it.
   `cli.sh stop` kills every registered `speakers/<pid>` process group.
+- **`progress.json`** is the contract with the devscope-live mod's voice bar: the speak lock
+  holder (`speak.sh`, `DS_VOICE_PROGRESS_KIND` set) writes `{kind, project, phase:
+  summarizing|voicing|speaking, piece, pieces, pieceMs, at (epoch ms), pid}` atomically per
+  phase and piece (`pieceMs` from the WAV header, 0 when unknown) and removes it on exit.
+  The mod parses it in `hooks/voiceBar.ts` and treats a file past its piece's end + 15 s as
+  dead; change both sides together.
 
 ## Token usage
 

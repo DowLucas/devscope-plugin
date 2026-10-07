@@ -16,6 +16,7 @@ export type Options = {
   outcomeLabels: boolean
   commitLinks: boolean
   commitTrailer: boolean
+  voiceProgress: boolean
 }
 
 export function readOptions(options: PluginOptions): Options {
@@ -28,6 +29,7 @@ export function readOptions(options: PluginOptions): Options {
     outcomeLabels: flag('outcomeLabels', true),
     commitLinks: flag('commitLinks', true),
     commitTrailer: flag('commitTrailer', false),
+    voiceProgress: flag('voiceProgress', true),
   }
 }
 

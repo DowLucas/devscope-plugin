@@ -200,6 +200,25 @@ pieces=$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$LONG")
 huge=$(for i in $(seq 1 400); do printf 'word%s. ' "$i"; done)
 [ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$huge" | wc -c | tr -d ' ')" -le 3500 ] && ok "long text is cut near 3000 characters" || bad "cap" ""
 
+# 10e. Progress for the devscope-live bar: phase per piece, with its length.
+python3 -c 'import wave,sys; w=wave.open(sys.argv[1],"wb"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000); w.writeframes(b"\0\0"*24000); w.close()' "$TMP/one-second.wav"
+[ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_wav_ms "$TMP/one-second.wav")" = 1000 ] && ok "reads a WAV's length from its header" || bad "wav ms" ""
+respond "" "audio/wav"; cp "$TMP/one-second.wav" "$STUB_DIR/resp"
+snapshots=$( unset DS_VOICE_SPEAK_LOG
+  export DS_VOICE_PROGRESS_KIND=explain DS_VOICE_PROGRESS_PROJECT=plugin
+  . "$S/_helpers.sh"; . "$S/voice/lib.sh"
+  _ds_voice_play() { jq -c '[.kind, .project, .phase, .piece, .pieces, (.pieceMs > 0), (.pid > 1)]' "$DS_VOICE_PROGRESS"; }
+  _ds_voice_speak_long "$LONG" standard )
+first=$(printf '%s\n' "$snapshots" | head -1); n=$(printf '%s\n' "$snapshots" | grep -c .)
+[ "$first" = "[\"explain\",\"plugin\",\"speaking\",0,$n,true,true]" ] && ok "progress: speaking piece 0 of $n with its length" || bad "progress" "$first"
+[ "$(printf '%s\n' "$snapshots" | tail -1 | jq '.[3]')" = $((n - 1)) ] && ok "progress: advances to the last piece" || bad "progress last" "$snapshots"
+( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_progress speaking 0 1 ) ; [ ! -f "$HOME/.cache/devscope/voice/progress.json" ] || jq -e '.pid' "$HOME/.cache/devscope/voice/progress.json" >/dev/null && ok "no progress outside the speaker" || bad "progress leak" ""
+rm -f "$HOME/.cache/devscope/voice/progress.json"
+configure; reset
+printf 'One short explanation.\n' | "$S/voice/cli.sh" say >/dev/null
+wait_spoken 1 5; sleep 0.5
+[ ! -f "$HOME/.cache/devscope/voice/progress.json" ] && ok "progress file removed when speech ends" || bad "progress cleanup" "$(cat "$HOME/.cache/devscope/voice/progress.json")"
+
 # 12. Reply summaries: independent of the announcer, on every finished turn.
 STOP='{hook_event_name: "Stop", last_assistant_message: "I fixed the reminder timer. All 30 tests pass. Want me to open a PR?"}'
 jq -n '{enabled: false}' > "$CONF"; reset

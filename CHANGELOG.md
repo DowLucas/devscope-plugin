@@ -24,6 +24,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`/devscope:voice speed slow|normal|fast`** (1.0x, 1.2x, 1.5x) for every
   engine: the server voice, Piper (length scale) and the system voices.
 - **`/devscope:voice stop`** ends speech in progress.
+- The speaker writes `~/.cache/devscope/voice/progress.json` (phase, piece, the
+  piece's length from its WAV header, process group) while it speaks, for the
+  devscope-live mod's progress bar (0.2.0).
 
 ### Changed
 - The default speech rate is 1.2x (was 1.5x). A `speed` set in `voice.json`

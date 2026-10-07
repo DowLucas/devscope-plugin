@@ -6,6 +6,8 @@ import { basename, nextPromptsBody } from '../hooks/suggestions'
 import { matchSkill } from '../hooks/teamSkills'
 import type { TeamSkill } from '../hooks/teamSkills'
 import { isPrUrl, linkFromBash, parseGhPr, withTrailer, withoutCredentials } from '../hooks/vcs'
+import { LEVELS, TRACK, TRACK_COLOR, barCells, fraction, isStale, parseProgress, runs, voiceLabel } from '../hooks/voiceBar'
+import type { VoiceProgress } from '../types'
 
 const skill = (id: string, ...triggerPhrases: string[]): TeamSkill => ({
   id,
@@ -52,6 +54,7 @@ describe('config', () => {
       outcomeLabels: true,
       commitLinks: true,
       commitTrailer: false,
+      voiceProgress: true,
     })
     expect(readOptions({ commitTrailer: true, nextPrompts: false }).commitTrailer).toBe(true)
   })
@@ -155,5 +158,67 @@ describe('suggestions', () => {
     expect(nextPromptsBody({ sessionId: 's', project: 'p' })).toEqual({ session_id: 's', project: 'p', limit: 1 })
     expect(nextPromptsBody({ sessionId: 's', project: 'p', after: 'x'.repeat(5000) }).after?.length).toBe(4000)
     expect(basename('/home/me/devscope/')).toBe('devscope')
+  })
+})
+
+describe('voice bar', () => {
+  const progress = (over: Partial<VoiceProgress> = {}): VoiceProgress => ({
+    kind: 'explain',
+    project: 'plugin',
+    phase: 'speaking',
+    piece: 1,
+    pieces: 4,
+    pieceMs: 10_000,
+    at: 1_000_000,
+    pid: 4242,
+    ...over,
+  })
+
+  test('parses the speaker file and rejects anything malformed', () => {
+    expect(parseProgress(JSON.stringify(progress()))).toEqual(progress())
+    expect(parseProgress('{')).toBeUndefined()
+    expect(parseProgress(JSON.stringify({ ...progress(), phase: 'singing' }))).toBeUndefined()
+    expect(parseProgress(JSON.stringify({ ...progress(), pid: 1 }))).toBeUndefined()
+    expect(parseProgress(JSON.stringify({ ...progress(), pid: '42; rm -rf /' }))).toBeUndefined()
+  })
+
+  test('fills through the pieces as each one plays', () => {
+    expect(fraction(progress(), 1_000_000)).toBe(0.25)
+    expect(fraction(progress(), 1_005_000)).toBe(0.375)
+    expect(fraction(progress({ piece: 3 }), 1_020_000)).toBe(1)
+    expect(fraction(progress({ phase: 'voicing' }), 1_000_000)).toBeUndefined()
+  })
+
+  test('a file left behind by a killed speaker goes stale', () => {
+    expect(isStale(progress(), 1_010_000)).toBe(false)
+    expect(isStale(progress(), 1_030_000)).toBe(true)
+    expect(isStale(progress({ phase: 'summarizing', pieceMs: 0 }), 1_040_000)).toBe(false)
+    expect(isStale(progress({ phase: 'summarizing', pieceMs: 0 }), 1_050_000)).toBe(true)
+  })
+
+  test('draws 6-dot braille: full cells, one partial cell, then the track', () => {
+    const cells = barCells(0.5, 0, 4)
+    expect(cells.map(c => c.char).join('')).toBe(`${LEVELS[6]}${LEVELS[6]}${TRACK}${TRACK}`)
+    expect(barCells(1 / 8, 0, 4).map(c => c.char).join('')).toBe(`${LEVELS[3]}${TRACK}${TRACK}${TRACK}`)
+    expect(cells[0].color).toBe('#7c3aed')
+    expect(barCells(1, 0, 4)[3].color).toBe('#f59e0b')
+    expect(cells[2].color).toBe(TRACK_COLOR)
+  })
+
+  test('sweeps a comet while the audio is being made', () => {
+    const at = (frame: number) => barCells(undefined, frame, 10).map(c => c.char).join('')
+    expect(at(0)).toBe(TRACK.repeat(10))
+    expect(at(6)).toBe(`${LEVELS[1]}${LEVELS[3]}${LEVELS[6]}${LEVELS[6]}${LEVELS[3]}${LEVELS[1]}${TRACK.repeat(4)}`)
+    expect(at(7)).not.toBe(at(6))
+  })
+
+  test('merges same-colored neighbours into one run', () => {
+    expect(runs(barCells(0, 0, 5))).toEqual([{ char: TRACK.repeat(5), color: TRACK_COLOR }])
+  })
+
+  test('says what is happening', () => {
+    expect(voiceLabel(progress())).toBe('plugin · explaining 2/4')
+    expect(voiceLabel(progress({ phase: 'voicing', kind: 'reply' }))).toBe('plugin · creating audio')
+    expect(voiceLabel(progress({ phase: 'summarizing', kind: 'reply', project: '' }))).toBe('summarizing the reply')
   })
 })

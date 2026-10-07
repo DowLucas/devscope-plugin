@@ -1,6 +1,6 @@
 {
   "name": "devscope-live",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DevScope in the live session: team prompt suggestions, team skills, a stuck band, outcome labels and session-to-commit links",
   "author": {
     "name": "Lucas Dow",
@@ -36,6 +36,12 @@
       "type": "boolean",
       "title": "Commit and PR links",
       "description": "Record the commits and PRs a session makes, and whether its PRs merged (checked with gh)",
+      "default": true
+    },
+    "voiceProgress": {
+      "type": "boolean",
+      "title": "Voice progress bar",
+      "description": "Show a progress bar above the prompt while DevScope voice creates or speaks audio (/devscope:voice explain, reply summaries)",
       "default": true
     },
     "commitTrailer": {

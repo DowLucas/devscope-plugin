@@ -24,7 +24,7 @@ class H(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("content-type", ctype)
         self.end_headers()
-        self.wfile.write(body.encode())
+        self.wfile.write(body if isinstance(body, bytes) else body.encode())
 
     def handle_any(self, method):
         raw = self.rfile.read(int(self.headers.get("content-length", 0)))
@@ -42,7 +42,7 @@ class H(BaseHTTPRequestHandler):
             time.sleep(5)
         status = int(open(os.path.join(d, "status")).read()) if os.path.exists(os.path.join(d, "status")) else 200
         ctype = open(os.path.join(d, "ctype")).read().strip() if os.path.exists(os.path.join(d, "ctype")) else "application/json"
-        self.reply(status, open(os.path.join(d, "resp")).read(), ctype)
+        self.reply(status, open(os.path.join(d, "resp"), "rb").read(), ctype)
 
     def do_GET(self):
         self.handle_any("GET")
