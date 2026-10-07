@@ -1,11 +1,11 @@
 # shellcheck shell=bash
 # Voice: the announcer, which speaks when a Claude Code session has been
-# waiting on the user past a grace delay; spoken reply summaries after every
+# waiting on the user past a grace delay; auto voice, a spoken summary of every
 # finished turn; and long speech for /devscope:voice explain. Sourced (after
 # _helpers.sh) by send-event.sh, which arms and clears on every hook event, by
 # timer.sh, which waits and announces, by speak.sh, which speaks replies and
 # explanations, and by cli.sh (/devscope:voice). Opt-in: the announcer stays
-# silent until voice.json says enabled, reply summaries until speak_replies.
+# silent until voice.json says enabled, auto voice until speak_replies.
 #
 # State under ~/.cache/devscope/voice/:
 #   pending/<session>.json  one marker per blocked session. Later activity from
@@ -47,7 +47,7 @@ DS_VOICE_SPEAK_TIMEOUT=30
 # Server voice (Kokoro): default for voice.json `voice`.
 DS_VOICE_SERVER_VOICE=am_michael
 # Speech rate for every engine, 1 = the voice's natural pace. voice.json
-# `speed` holds a number; /devscope:voice speed sets one of three presets.
+# `speed` holds a number; /devscope:voice speed takes one (0.5-2) or a preset.
 DS_VOICE_SPEED_SLOW=1.0
 DS_VOICE_SPEED_NORMAL=1.2
 DS_VOICE_SPEED_FAST=1.5
@@ -105,12 +105,17 @@ _ds_voice_muted() {
   [ "$(_ds_voice_int .mute_until 0)" -gt "$(date +%s)" ]
 }
 
-_ds_voice_speed_preset() {  # slow|normal|fast -> rate
+# A preset name or a number from 0.5 to 2 (`1.35`, `.8`, `1,35`) -> the rate.
+# Anything else, or out of range, fails.
+_ds_voice_speed_preset() {
   case "$1" in
     slow) printf '%s' "$DS_VOICE_SPEED_SLOW" ;;
     normal) printf '%s' "$DS_VOICE_SPEED_NORMAL" ;;
     fast) printf '%s' "$DS_VOICE_SPEED_FAST" ;;
-    *) return 1 ;;
+    *)
+      printf '%s' "${1%x}" | tr ',' '.' | awk '
+        $0 ~ /^[0-9]*\.?[0-9]+$/ && $0 + 0 >= 0.5 && $0 + 0 <= 2 { printf "%g", $0 + 0; found = 1 }
+        END { exit !found }' ;;
   esac
 }
 
@@ -128,6 +133,13 @@ _ds_voice_speed_name() {
     "$DS_VOICE_SPEED_FAST") echo fast ;;
     *) echo custom ;;
   esac
+}
+
+# How the current speed reads: "normal (1.2x)", or "1.35x" for one set as a number.
+_ds_voice_speed_text() {
+  local name
+  name=$(_ds_voice_speed_name)
+  if [ "$name" = custom ]; then printf '%sx' "$(_ds_voice_speed)"; else printf '%s (%sx)' "$name" "$(_ds_voice_speed)"; fi
 }
 
 # Grace delay before the first announcement, per trigger type.
@@ -199,7 +211,7 @@ _ds_voice_on_event() {
   return 0
 }
 
-# --- Reply summaries (/devscope:voice replies on) ---
+# --- Auto voice (/devscope:voice auto on): reply summaries ---
 
 # Independent of the announcer: on every finished turn, queue Claude's reply
 # for speak.sh to summarize and speak. A turn that already spoke an explanation

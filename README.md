@@ -209,15 +209,15 @@ Running several sessions, or working in another window? `/devscope:voice on` mak
 - **Summaries follow your privacy mode.** Sentences are written by DevScope's AI from what your privacy mode already sends. `private` sessions never leave your machine and use a local template.
 - **Natural voice, nothing to install.** Announcements are voiced by your DevScope server (Kokoro, default voice `am_michael` at 1.2×; change `voice`/`volume` in `voice.json`, speed with `/devscope:voice speed`). `private` sessions, and any time the server can't be reached, use a local voice instead: [Piper](https://github.com/rhasspy/piper) if you ran `/devscope:voice setup` (Linux; `pipx install piper-tts` on macOS), otherwise the system voice (`say`, `spd-say`, `espeak`).
 
-Other commands: `off`, `mute 1h`, `unmute`, `test`, `status`, `finished on` (also announce finished turns after 2 min), `speed slow|normal|fast` (1.0×, 1.2× or 1.5×, for every voice), `stop` (end speech in progress). Settings live in `~/.config/devscope/voice.json`.
+Other commands: `off`, `mute 1h`, `unmute`, `test`, `status`, `finished on` (also announce finished turns after 2 min), `speed slow|normal|fast` (1.0×, 1.2× or 1.5×, for every voice; or any number from 0.5 to 2, e.g. `speed 1.35`), `stop` (end speech in progress). Settings live in `~/.config/devscope/voice.json`.
 
-### Spoken reply summaries
+### Auto voice
 
-`/devscope:voice replies` toggles a short spoken summary after every reply Claude finishes: the outcome first, then anything you need to decide, in two or three sentences. It works with the announcer on or off. The reply is sent to your DevScope server to summarize and is not stored; in `private` mode you only hear which project finished, voiced locally.
+`/devscope:voice auto` toggles a short spoken summary whenever Claude finishes a reply: the outcome first, then anything you need to decide, in two or three sentences. It works with the announcer on or off. The reply is sent to your DevScope server to summarize and is not stored; in `private` mode you only hear which project finished, voiced locally.
 
 ### Explain it out loud
 
-`/devscope:voice explain [topic]` talks a topic through like a colleague at a whiteboard: the question, a concrete scenario with real names and values, the options weighed out loud, where it leans, and a question back to you. A short written card stays in the chat. Answer the question and the discussion carries on by voice. With no topic it explains whatever you were just working on.
+`/devscope:voice explain [topic]` talks a topic through like a colleague at a whiteboard: the question, a concrete scenario with real names and values, the options weighed out loud, where it leans, and a question back to you. A short written card stays in the chat. It speaks once, only when you run it; turn on auto voice to hear later replies too. With no topic it explains whatever you were just working on.
 
 ```
 /devscope:voice explain why reminders sometimes come twice

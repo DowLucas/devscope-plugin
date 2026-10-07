@@ -219,10 +219,12 @@ printf 'One short explanation.\n' | "$S/voice/cli.sh" say >/dev/null
 wait_spoken 1 5; sleep 0.5
 [ ! -f "$HOME/.cache/devscope/voice/progress.json" ] && ok "progress file removed when speech ends" || bad "progress cleanup" "$(cat "$HOME/.cache/devscope/voice/progress.json")"
 
-# 12. Reply summaries: independent of the announcer, on every finished turn.
+# 12. Auto voice: reply summaries, independent of the announcer, on every finished turn.
 STOP='{hook_event_name: "Stop", last_assistant_message: "I fixed the reminder timer. All 30 tests pass. Want me to open a PR?"}'
 jq -n '{enabled: false}' > "$CONF"; reset
-"$S/voice/cli.sh" replies >/dev/null; [ "$(jq -r .speak_replies "$CONF")" = true ] && ok "cli replies toggles on" || bad "replies toggle" "$(cat "$CONF")"
+"$S/voice/cli.sh" auto >/dev/null; [ "$(jq -r .speak_replies "$CONF")" = true ] && ok "cli auto toggles on" || bad "auto toggle" "$(cat "$CONF")"
+"$S/voice/cli.sh" replies off >/dev/null; [ "$(jq -r .speak_replies "$CONF")" = false ] && ok "replies is an alias for auto" || bad "replies alias" "$(cat "$CONF")"
+"$S/voice/cli.sh" auto on >/dev/null
 respond '{"text": "plugin: the reminder timer is fixed and tests pass. It asks whether to open a PR."}'
 hook response-stop.sh r1 /work/plugin "$STOP"
 wait_spoken 1 5 && [ "$(spoken)" = "plugin: the reminder timer is fixed and tests pass. It asks whether to open a PR." ] && ok "reply summary spoken (announcer off)" || bad "reply" "$(spoken) $(cat "$HOME/.cache/devscope/voice/voice.log" 2>/dev/null)"
@@ -253,9 +255,9 @@ reset
 hook response-stop.sh r5 /work/plugin "$STOP"; sleep 1.5
 [ "$(lines)" = 0 ] && ok "muted: no reply summary" || bad "reply mute" "$(spoken)"
 "$S/voice/cli.sh" unmute >/dev/null
-"$S/voice/cli.sh" replies off >/dev/null; reset
+"$S/voice/cli.sh" auto off >/dev/null; reset
 hook response-stop.sh r6 /work/plugin "$STOP"; sleep 1.5
-[ "$(lines)" = 0 ] && [ "$(hits)" = 0 ] || [ -z "$(paths | grep voice)" ] && ok "replies off: silent" || bad "replies off" "$(spoken)"
+[ "$(lines)" = 0 ] && [ "$(hits)" = 0 ] || [ -z "$(paths | grep voice)" ] && ok "auto off: silent" || bad "auto off" "$(spoken)"
 
 # 13. stop ends speech in progress.
 mkdir -p "$HOME/.cache/devscope/voice/speakers"
@@ -269,11 +271,17 @@ wait "$SPK" 2>/dev/null || true
 out=$("$S/voice/cli.sh" on); printf '%s' "$out" | grep -q "Voice announcer: on" && ok "cli on prints status" || bad "cli on" ""
 "$S/voice/cli.sh" mute 15m >/dev/null; [ "$(jq -r .mute_until "$CONF")" -gt $(( $(date +%s) + 890 )) ] && ok "cli mute 15m" || bad "mute" "$(cat "$CONF")"
 "$S/voice/cli.sh" mute soon >/dev/null && bad "bad duration" "accepted" || ok "cli rejects a bad duration"
-[[ "$("$S/voice/cli.sh" status)" == *"Reply summaries: off"* ]] && ok "status shows reply summaries" || bad "status replies" ""
+[[ "$("$S/voice/cli.sh" status)" == *"Auto voice: off"* ]] && ok "status shows auto voice" || bad "status auto" ""
 "$S/voice/cli.sh" speed slow >/dev/null; [ "$(jq -r .speed "$CONF")" = 1.0 ] && ok "cli speed slow = 1.0x" || bad "speed slow" "$(cat "$CONF")"
 "$S/voice/cli.sh" speed fast >/dev/null; [ "$(jq -r .speed "$CONF")" = 1.5 ] && ok "cli speed fast = 1.5x" || bad "speed fast" "$(cat "$CONF")"
 [[ "$("$S/voice/cli.sh" speed)" == *"Speed: fast (1.5x)"* ]] && ok "cli speed shows the preset" || bad "speed show" "$("$S/voice/cli.sh" speed)"
 "$S/voice/cli.sh" speed warp >/dev/null && bad "bad speed" "accepted" || ok "cli rejects an unknown speed"
+"$S/voice/cli.sh" speed 1.35 >/dev/null; [ "$(jq -r .speed "$CONF")" = 1.35 ] && ok "cli speed takes a number" || bad "speed number" "$(cat "$CONF")"
+[[ "$("$S/voice/cli.sh" speed)" == *"Speed: 1.35x."* ]] && ok "a number shows as itself" || bad "speed number show" "$("$S/voice/cli.sh" speed)"
+"$S/voice/cli.sh" speed 1,25x >/dev/null; [ "$(jq -r .speed "$CONF")" = 1.25 ] && ok "cli speed takes 1,25x" || bad "speed comma" "$(cat "$CONF")"
+"$S/voice/cli.sh" speed .8 >/dev/null; [ "$(jq -r .speed "$CONF")" = 0.8 ] && ok "cli speed takes .8" || bad "speed .8" "$(cat "$CONF")"
+for v in 0.4 2.5 -1 1.2.3 1e1; do "$S/voice/cli.sh" speed "$v" >/dev/null && bad "speed $v" "accepted"; done
+[ "$(jq -r .speed "$CONF")" = 0.8 ] && ok "cli rejects out-of-range and malformed numbers" || bad "speed range" "$(cat "$CONF")"
 "$S/voice/cli.sh" speed normal >/dev/null; [ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_speed_name)" = normal ] && ok "cli speed normal" || bad "speed normal" "$(cat "$CONF")"
 jq '.speed = 9' "$CONF" > "$TMP/c" && mv "$TMP/c" "$CONF"
 [ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_speed)" = 2 ] && ok "a hand-edited speed is clamped to 2x" || bad "clamp" ""
