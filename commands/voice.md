@@ -1,7 +1,7 @@
 ---
 allowed-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(bash:*)
 description: DevScope voice: explain a topic out loud, auto voice after every reply, announcements when a session waits on you (explain, auto, verbosity, speed, on, off, mute, stop, test, setup)
-argument-hint: "[explain [--short|--long] <topic>|model [chatterbox|kokoro|default]|auto [on|off]|auto-default [on|off]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|speed [slow|normal|fast|1.35]|status|on|off|mute 1h|unmute|stop|test|setup|finished on|off]"
+argument-hint: "[explain [--short|--long] <topic>|model [chatterbox|kokoro|local|default]|auto [on|off]|auto-default [on|off]|verbosity [explain|auto] [short|normal|long]|when-locked [quiet|play]|speed [slow|normal|fast|1.35]|status|on|off|mute 1h|unmute|stop|test|setup|finished on|off]"
 ---
 
 ## Your task
@@ -18,7 +18,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/voice/cli.sh" $ARGUMENTS
 
 Show the output to the user in a few short lines. Do not run anything else.
 
-The default engine is `server`: the DevScope server voices speech. `model` lists the server's voices (on the homelab: chatterbox, the default, and kokoro), `model <name>` picks one, `model default` goes back to the server's choice; when the chosen voice is busy or down, the server uses its next one. If the engine is `system` or `none`, mention that it needs a DevScope API key (`/devscope:setup`), and that `/devscope:voice setup` installs Piper as an offline fallback (Linux; on macOS use `pipx install piper-tts`).
+The default engine is `server`: the DevScope server voices speech. `model` lists the voices (on the homelab: chatterbox, the default, and kokoro, plus `local`), `model <name>` picks one, `model local` speaks with this computer's own voice (macOS `say`: the System voice from Accessibility > Spoken Content, Siri voices included; summaries still come from the server), `model default` goes back to the server's choice; when the chosen voice is busy or down, the server uses its next one. If the engine is `system` or `none`, mention that it needs a DevScope API key (`/devscope:setup`), and that `/devscope:voice setup` installs Piper as an offline fallback (Linux; on macOS use `pipx install piper-tts`).
 
 Three features:
 - **Explain** (`explain [topic]`): see *Explain mode* below.

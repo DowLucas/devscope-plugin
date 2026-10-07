@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.29.0] - 2026-10-07
+
+### Added
+- **Local mode: `/devscope:voice model local`** speaks with this computer's own
+  voice (`say` on macOS) instead of the server's. It uses the System voice, so
+  choosing a Siri voice in System Settings > Accessibility > Spoken Content
+  makes DevScope speak with Siri. Summaries for auto voice still come from the
+  server; only the voice is local. `model <server voice>` or `model default`
+  switches back. `model` lists `local` with the server's voices.
+
 ## [0.28.0] - 2026-10-07
 
 ### Changed

@@ -302,11 +302,22 @@ reset; "$S/voice/cli.sh" when-locked play >/dev/null; touch "$LOCK"
 [[ "$("$S/voice/cli.sh" status)" == *"Screen: locked; when locked: quiet"* ]] && ok "status shows the screen and the setting" || bad "status screen" "$("$S/voice/cli.sh" status | grep Screen)"
 "$S/voice/cli.sh" when-locked loud >/dev/null && bad "bad when-locked" "accepted" || ok "when-locked rejects an unknown value"
 respond '{"models": ["chatterbox", "kokoro"]}'
-[[ "$("$S/voice/cli.sh" model)" == *"This server offers: chatterbox kokoro"* ]] && [ "$(last .path)" = /api/ai/voice-models ] && ok "model lists the server's voices" || bad "model list" "$("$S/voice/cli.sh" model)"
+[[ "$("$S/voice/cli.sh" model)" == *"Choices: chatterbox kokoro (server voices, the first is its default), or local"* ]] && [ "$(last .path)" = /api/ai/voice-models ] && ok "model lists the server's voices" || bad "model list" "$("$S/voice/cli.sh" model)"
 "$S/voice/cli.sh" model kokoro >/dev/null; [ "$(jq -r .model "$CONF")" = kokoro ] && ok "model kokoro is stored" || bad "model set" "$(cat "$CONF")"
 "$S/voice/cli.sh" model piper >/dev/null && bad "unknown model" "accepted" || ok "model rejects a voice the server does not offer"
 "$S/voice/cli.sh" model "../x" >/dev/null && bad "bad model" "accepted" || ok "model rejects a malformed name"
 "$S/voice/cli.sh" model default >/dev/null; [ "$(jq -r '.model // "unset"' "$CONF")" = unset ] && ok "model default clears the choice" || bad "model default" "$(cat "$CONF")"
+# model local: this computer's own voice (macOS say, the System voice, Siri included).
+[[ "$("$S/voice/cli.sh" model local)" == *"Spoken Content"* ]] && [ "$(jq -r .engine "$CONF")" = system ] && ok "model local switches to the computer's voice" || bad "model local" "$(cat "$CONF")"
+[[ "$("$S/voice/cli.sh" status)" == *"Voice: local (this computer's own voice)"* ]] && ok "status shows local" || bad "status local" "$("$S/voice/cli.sh" status | grep -i voice:)"
+mkdir -p "$TMP/saybin"; printf '#!/bin/sh\necho "$*" >> "%s"\n' "$TMP/said" > "$TMP/saybin/say"; chmod +x "$TMP/saybin/say"
+reset; rm -f "$TMP/said" "$LOCK"
+( unset DS_VOICE_SPEAK_LOG; export PATH="$TMP/saybin:$PATH"; . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_speak_long "Devscope: tests pass. Shall I open the PR?" standard )
+[ "$(cat "$TMP/said" 2>/dev/null)" = "-r 210 Devscope: tests pass. Shall I open the PR?" ] && [ "$(hits)" = 0 ] && ok "local: say speaks at the set speed, no server request" || bad "local say" "$(cat "$TMP/said" 2>/dev/null) hits=$(hits)"
+respond '{"models": ["chatterbox", "kokoro"]}'
+"$S/voice/cli.sh" model chatterbox >/dev/null; [ "$(jq -r '.engine + "/" + .model' "$CONF")" = auto/chatterbox ] && ok "a server voice after local turns the server back on" || bad "back to server" "$(cat "$CONF")"
+"$S/voice/cli.sh" model local >/dev/null; "$S/voice/cli.sh" model default >/dev/null
+[ "$(jq -r '.engine + "/" + (.model // "unset")' "$CONF")" = auto/unset ] && ok "model default leaves local too" || bad "default after local" "$(cat "$CONF")"
 rm -f "$LOCK"
 
 # 12. Auto voice: reply summaries, independent of the announcer, on every finished turn.
