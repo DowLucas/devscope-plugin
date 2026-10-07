@@ -177,6 +177,27 @@ configure '.model = "kokoro"'; server_speak standard >/dev/null
 configure; respond "RIFFfake" "audio/wav"
 configure '.voice = "af_heart" | .speed = 1.2 | .volume = 2.5'
 server_speak standard >/dev/null; [ "$(last .body.voice)/$(last .body.speed)/$(last .body.volume)" = "af_heart/1.2/2.5" ] && ok "server voice: voice, speed and volume from voice.json" || bad "server config" "$(last .body)"
+# Local playback volume: passed to the player, so only DevScope's speech gets louder.
+play_with() {  # player -> the arguments it was called with
+  local bin="$TMP/playbin-$1" t
+  rm -rf "$bin"; mkdir -p "$bin"
+  for t in awk jq timeout perl; do command -v "$t" >/dev/null && ln -s "$(command -v "$t")" "$bin/$t"; done
+  printf '#!/bin/sh\necho "$*" > "%s"\n' "$TMP/play-args" > "$bin/$1"; chmod +x "$bin/$1"
+  rm -f "$TMP/play-args"
+  ( PATH="$bin"; . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_play /x.wav )
+  cat "$TMP/play-args" 2>/dev/null
+}
+configure
+[ "$(play_with pw-play)" = "--volume 1 /x.wav" ] && ok "playback volume: 1 by default" || bad "playback default" "$(play_with pw-play)"
+configure '.playback_volume = 1.5'
+[ "$(play_with pw-play)" = "--volume 1.5 /x.wav" ] && ok "playback volume: pw-play gets it" || bad "playback pw-play" "$(play_with pw-play)"
+[ "$(play_with paplay)" = "--volume=98304 /x.wav" ] && ok "playback volume: paplay gets it in its units" || bad "playback paplay" "$(play_with paplay)"
+[ "$(play_with afplay)" = "-v 1.5 /x.wav" ] && ok "playback volume: afplay gets it" || bad "playback afplay" "$(play_with afplay)"
+[ "$(play_with aplay)" = "/x.wav" ] && ok "playback volume: aplay plays as received" || bad "playback aplay" "$(play_with aplay)"
+configure '.playback_volume = 9'
+[ "$(play_with pw-play)" = "--volume 3 /x.wav" ] && ok "playback volume: clamped to 3" || bad "playback clamp" "$(play_with pw-play)"
+configure '.playback_volume = "loud"'
+[ "$(play_with pw-play)" = "--volume 1 /x.wav" ] && ok "playback volume: not a number means 1" || bad "playback bad" "$(play_with pw-play)"
 configure; reset_hits
 [ "$(server_speak private)" = "1 " ] && [ "$(hits)" = 0 ] && ok "server voice: never for private sessions" || bad "server private" "hits=$(hits)"
 respond '{"error":"Server voice unavailable"}' "application/json" 503

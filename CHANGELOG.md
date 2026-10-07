@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.30.0] - 2026-10-07
+
+### Added
+- **`playback_volume` in `voice.json`** (0.5-3, default 1) sets how loud this
+  computer plays DevScope's speech, so it can be louder without turning up
+  every other sound. It is passed to `pw-play`, `paplay` and `afplay`; `aplay`
+  plays as received. `volume` still sets how loud the server makes the speech.
+
 ## [0.29.0] - 2026-10-07
 
 ### Added
