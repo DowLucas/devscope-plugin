@@ -253,14 +253,22 @@ describe('#3 team skills', () => {
 })
 
 describe('#2 team prompts', () => {
+  /** One answered turn after `prompt` in which Claude ran `tools` tool calls. */
+  async function workedTurn($: any, prompt: string, opts: { answer?: string; tools?: number; id?: string } = {}) {
+    await $.prompt.submit(typed(prompt))
+    await $.turn.start({ text: '', turnId: opts.id ?? 't1' })
+    for (let i = 0; i < (opts.tools ?? 1); i++) await $.tool.call({ tool: 'Bash', command: 'ls' })
+    await $.turn.complete({ answer: opts.answer ?? 'Added.', durationMs: 5000, isAborted: false, turnId: opts.id ?? 't1', reason: 'answer' })
+  }
+  const okBash = (on: On) => on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '' }, isError: false }))
+
   test('proposes the next prompt that worked after a similar one', async ($, on) => {
     const { clock, seen } = setup(on)
+    okBash(on)
     const calls = backend(on, {
-      'POST /api/live/next-prompts': { suggestions: [{ text: 'now run the integration tests', project: 'devscope' }] },
+      'POST /api/live/next-prompts': { suggestions: [{ text: 'run integration tests', project: 'devscope' }] },
     })
-    await $.prompt.submit(typed('add a migration for turn labels'))
-    await $.turn.start({ text: '', turnId: 't1' })
-    await $.turn.complete({ answer: 'Added.', durationMs: 5000, isAborted: false, turnId: 't1', reason: 'answer' })
+    await workedTurn($, 'add a migration for turn labels')
     await clock.advance(1)
 
     expect(posts(calls, '/api/live/next-prompts')[0]?.body).toEqual({
@@ -269,17 +277,56 @@ describe('#2 team prompts', () => {
       after: 'add a migration for turn labels',
       limit: 1,
     })
-    expect(seen.suggested).toEqual(['now run the integration tests'])
+    expect(seen.suggested).toEqual(['run integration tests'])
   })
 
   test('replaces the engine guess with the fresh team suggestion', async ($, on) => {
     const { clock, seen } = setup(on)
+    okBash(on)
     backend(on, { 'POST /api/live/next-prompts': { suggestions: [{ text: 'team step', project: 'devscope' }] } })
-    await $.prompt.submit(typed('something'))
-    await $.turn.complete({ answer: '', durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' })
+    await workedTurn($, 'something')
     await clock.advance(1)
     await $.prompt.suggest({ text: 'engine guess', origin: { kind: 'suggestion' } })
     expect(seen.suggested.at(-1)).toBe('team step')
+  })
+
+  test('never shows more than a few words, whatever the server sends', async ($, on) => {
+    const { clock, seen } = setup(on)
+    okBash(on)
+    backend(on, {
+      'POST /api/live/next-prompts': { suggestions: [{ text: 'please also update the docs and the changelog', project: 'devscope' }] },
+    })
+    await workedTurn($, 'fix it')
+    await clock.advance(1)
+    expect(seen.suggested).toEqual([])
+  })
+
+  test('stays quiet when Claude asked a question, or only talked', async ($, on) => {
+    const { clock } = setup(on)
+    okBash(on)
+    const calls = backend(on, { 'POST /api/live/next-prompts': { suggestions: [{ text: 'push', project: 'devscope' }] } })
+    await workedTurn($, 'fix it', { answer: 'Fixed the parser.\n\nShould I also update the docs?' })
+    await clock.advance(1)
+    await workedTurn($, 'what does this do', { tools: 0, id: 't2' })
+    await clock.advance(1)
+    expect(posts(calls, '/api/live/next-prompts')).toHaveLength(0)
+  })
+
+  test('pauses for 30 minutes after three suggestions in a row are typed over', async ($, on) => {
+    const { clock, seen } = setup(on)
+    okBash(on)
+    const calls = backend(on, { 'POST /api/live/next-prompts': { suggestions: [{ text: 'push', project: 'devscope' }] } })
+    for (let i = 0; i < 4; i++) {
+      await workedTurn($, `change ${i}`, { id: `t${i}` })
+      await clock.advance(1)
+    }
+    // Shown after turns 0-2; each typed over by the next prompt; none after turn 3.
+    expect(posts(calls, '/api/live/next-prompts')).toHaveLength(3)
+    await clock.advance(30 * 60 * 1000)
+    await workedTurn($, 'push', { id: 't9' })
+    await clock.advance(1)
+    expect(posts(calls, '/api/live/next-prompts')).toHaveLength(4)
+    expect(seen.suggested).toHaveLength(4)
   })
 })
 

@@ -22,7 +22,7 @@
     {
       "name": "devscope-live",
       "description": "DevScope in the live session: team prompt suggestions, team skills, a stuck band, outcome labels and session-to-commit links (Claude Code mod)",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": {
         "name": "Lucas Dow",
         "email": "lucdow7@gmail.com"
