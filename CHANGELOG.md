@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.28.0] - 2026-10-07
+
+### Changed
+- **Auto voice is per session.** `/devscope:voice auto` (or `auto on|off`)
+  now turns it on or off only for the session you type it in, for as long as
+  that Claude Code window is open (`/clear` included). The new
+  **`/devscope:voice auto-default on|off`** is the setting for every session
+  where `auto` was not used; it is what `auto` used to change. `status` shows
+  both. Your current setting carries over as the default.
+
 ## [0.27.0] - 2026-10-07
 
 ### Added

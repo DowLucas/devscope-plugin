@@ -218,7 +218,10 @@ claude plugin disable devscope@devscope                  # Disable
   no voice or is unreachable it falls back to Piper if installed (`/devscope:voice setup`),
   else `say`/`spd-say`/`espeak`. What is sent follows the
   privacy mode: `standard` sends no more than its events do. Tests: `tests/voice/run.sh`.
-- **Auto voice** (opt-in, `/devscope:voice auto`, alias `replies`; `speak_replies` in voice.json) is
+- **Auto voice** (opt-in) is per Claude Code window: `/devscope:voice auto` writes `auto/<claude-pid>`
+  (`on`/`off`; the PID comes from Claude Code's `CLAUDE_PID`, else a walk up the process tree, so it survives
+  `/clear`), and windows without one follow `speak_replies` in voice.json (`/devscope:voice auto-default`).
+  Files of closed windows are pruned when `auto` runs. Alias `replies` = `auto`. It is
   independent of the announcer. On `response.complete`, `_ds_voice_on_reply_event` writes
   `replies/<session>.json` (the reply's first 2800 + last 1100 chars; nothing for `private`)
   and spawns `speak.sh reply`, which asks `/api/ai/voice-summary` with `trigger: "reply"`
