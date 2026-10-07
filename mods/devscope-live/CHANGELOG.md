@@ -2,6 +2,19 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-10-07
+
+### Added
+- **Voice progress bar.** While DevScope voice makes or speaks audio
+  (`/devscope:voice explain`, reply summaries), a gradient bar of 6-dot braille sits
+  above the prompt: a comet sweeps while the reply is summarized and the audio is
+  created, then it fills through the pieces as they play (24 cells, 144 steps),
+  with what is happening and a *Stop* button. It reads the `devscope` plugin's
+  `~/.cache/devscope/voice/progress.json` (0.24.0+): once a second while idle,
+  every 120 ms while speech runs. A file left behind by a killed speaker is
+  ignored. Interactive sessions only; turn off with the *Voice progress bar*
+  option.
+
 ## [0.1.0] - 2026-10-06
 
 ### Added

@@ -18,7 +18,7 @@ hooks/
   hooks.json           # Hook event → script mappings
 commands/
   setup.md             # /devscope:setup slash command definition
-  voice.md             # /devscope:voice (on/off/mute/test/setup)
+  voice.md             # /devscope:voice (explain/replies/speed/on/off/mute/stop/test/setup)
   backfill-usage.md    # /devscope:backfill-usage (exact usage for past sessions)
 scripts/
   _helpers.sh          # Shared helpers (config loading, SHA256, timestamps)
@@ -47,7 +47,7 @@ scripts/
   directory-added.sh   # DirectoryAdded hook
   setup-hook.sh        # Setup hook (plugin init/maintenance)
   setup.sh             # Interactive setup (used by install.sh) — NOT a hook
-  voice/               # Voice announcer: lib.sh (arm/clear/announce), timer.sh, cli.sh
+  voice/               # Voice: lib.sh (arm/clear/announce, replies, long speech), timer.sh, speak.sh, cli.sh
 install.sh             # One-liner installer with gum UI
 mods/devscope-live/    # Second plugin: a Claude Code mod (see below)
 docs/specs/            # Design specs
@@ -59,7 +59,7 @@ A separate plugin in the same marketplace (`source: ./mods/devscope-live`), buil
 Claude Code's function hooks ("mods", early access; verified on 2.1.291). Design and the
 `/api/live` backend contract: `docs/specs/2026-10-06-devscope-live-design.md`. It adds
 in-session features (team prompts, team skills, stuck band, outcome labels, commit/PR
-links); the Bash plugin still ships all events. It has its own version in its
+links, the voice progress bar); the Bash plugin still ships all events. It has its own version in its
 `plugin.json` and its `marketplace.json` entry (keep both in sync); changing it does not
 require bumping the `devscope` plugin.
 
@@ -211,10 +211,30 @@ claude plugin disable devscope@devscope                  # Disable
   sentence from `/api/ai/voice-summary`, or a local template for `private` sessions or when
   the backend fails; three or more due within 15 s become one sentence. Speech uses the
   server voice by default (`/api/ai/voice-audio`, Kokoro on the homelab; `voice`/`speed` in
-  voice.json, default `am_michael` at 1.5×), never for `private` sessions; if the server has
+  voice.json, default `am_michael`; `speed` 1.2× by default, presets slow 1.0 / normal 1.2 / fast 1.5
+  via `/devscope:voice speed`, applied to every engine), never for `private` sessions; if the server has
   no voice or is unreachable it falls back to Piper if installed (`/devscope:voice setup`),
   else `say`/`spd-say`/`espeak`. What is sent follows the
   privacy mode: `standard` sends no more than its events do. Tests: `tests/voice/run.sh`.
+- **Reply summaries** (opt-in, `/devscope:voice replies`, `speak_replies` in voice.json) are
+  independent of the announcer. On `response.complete`, `_ds_voice_on_reply_event` writes
+  `replies/<session>.json` (the reply's first 2800 + last 1100 chars; nothing for `private`)
+  and spawns `speak.sh reply`, which asks `/api/ai/voice-summary` with `trigger: "reply"`
+  and speaks under the lock; a newer reply from the same session replaces an older one.
+  This deliberately sends response text in `standard` mode too: the user turned the
+  feature on for exactly that, and the endpoint stores nothing.
+- **Long speech** (`/devscope:voice explain` → `cli.sh say`, text on stdin): `speak.sh say` speaks
+  it detached via `_ds_voice_speak_long`, which splits it into pieces of at most 400
+  characters (first at most 200, so speech starts fast; `voice-audio` takes 440) and fetches
+  the next piece while the current one plays. `say` touches `spoke/<claude-pid>` so that
+  turn's reply is not also summarized; the Stop hook consumes it, a new prompt clears it.
+  `cli.sh stop` kills every registered `speakers/<pid>` process group.
+- **`progress.json`** is the contract with the devscope-live mod's voice bar: the speak lock
+  holder (`speak.sh`, `DS_VOICE_PROGRESS_KIND` set) writes `{kind, project, phase:
+  summarizing|voicing|speaking, piece, pieces, pieceMs, at (epoch ms), pid}` atomically per
+  phase and piece (`pieceMs` from the WAV header, 0 when unknown) and removes it on exit.
+  The mod parses it in `hooks/voiceBar.ts` and treats a file past its piece's end + 15 s as
+  dead; change both sides together.
 
 ## Token usage
 

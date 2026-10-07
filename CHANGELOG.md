@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.24.0] - 2026-10-07
+
+### Added
+- **`/devscope:voice explain [topic]`** talks a topic through out loud, simply, like a
+  colleague at the whiteboard: the question, a concrete scenario, the options
+  weighed with their catch, where it leans, and a question back to you. A short
+  written card stays in the chat, and answering the question keeps the
+  discussion going by voice. Long speech is voiced in pieces of at most 400
+  characters, the next one fetched while the current one plays, so there are
+  no gaps; if the server voice fails partway, the rest uses a local voice.
+- **Spoken reply summaries**: `/devscope:voice replies` (toggle, or `on`/`off`)
+  reads a two-to-three sentence summary of every reply Claude finishes,
+  independent of the announcer. The reply is sent to your DevScope server to
+  summarize and is not stored; in `private` mode you hear only which project
+  finished, voiced locally. A turn that used `/devscope:voice explain` is not
+  summarized on top. Needs a DevScope server with the `reply` voice-summary
+  trigger; older servers fall back to "<project> is done".
+- **`/devscope:voice speed slow|normal|fast`** (1.0x, 1.2x, 1.5x) for every
+  engine: the server voice, Piper (length scale) and the system voices.
+- **`/devscope:voice stop`** ends speech in progress.
+- The speaker writes `~/.cache/devscope/voice/progress.json` (phase, piece, the
+  piece's length from its WAV header, process group) while it speaks, for the
+  devscope-live mod's progress bar (0.2.0).
+
+### Changed
+- The default speech rate is 1.2x (was 1.5x). A `speed` set in `voice.json`
+  still wins.
+
 ## [0.23.0] - 2026-10-06
 
 ### Added

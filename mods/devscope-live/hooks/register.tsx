@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { Band, StuckNudge } from '../types'
+import type { Band, StuckNudge, VoiceView } from '../types'
 import { UNREADABLE_CONFIG, parseConfig, readOptions, resolveConfig } from './config'
 import type { Config, Options } from './config'
 import { implicitLabel, shouldAsk } from './labels'
@@ -11,8 +11,10 @@ import type { Suggestion } from './suggestions'
 import { USE_IT, matchSkill, skillContext, skillLabel } from './teamSkills'
 import type { TeamSkill } from './teamSkills'
 import { isPrUrl, linkFromBash, parseGhPr, withTrailer, withoutCredentials } from './vcs'
+import { barCells, fraction, isStale, parseProgress, runs, voiceLabel } from './voiceBar'
 
 const band = atom({ plugin: 'devscope-live', key: 'band' } as const, null as Band)
+const voice = atom({ plugin: 'devscope-live', key: 'voice' } as const, null as VoiceView)
 
 /** `$.http.fetch` has no timeout of its own; past this a request is given up on. */
 const REQUEST_TIMEOUT_MS = 5000
@@ -24,6 +26,9 @@ const NUDGE_DELAY_MS = 2500
 const SUGGESTION_FRESH_MS = 60_000
 const SKILLS_CACHE_MS = 6 * 60 * 60 * 1000
 const PR_CHECK_MS = 6 * 60 * 60 * 1000
+/** How often to look for speech while there is none, and to redraw while there is. */
+const VOICE_IDLE_MS = 1000
+const VOICE_FRAME_MS = 120
 
 const iso = (ms: number) => new Date(ms).toISOString()
 
@@ -97,6 +102,8 @@ const offered = new Set<string>()
 let lastAskAt = Number.NEGATIVE_INFINITY
 let suggestion: { text: string; at: number } | undefined
 let nudgeCheck: Timer | undefined
+let voiceIdle: Timer | undefined
+let voiceFrames: Timer | undefined
 
 // ---- #3 team skills ----
 
@@ -192,6 +199,56 @@ async function resolvePrs($: EngineInterface, remote: string) {
   }
 }
 
+// ---- Voice progress bar (the Bash plugin's speaker writes progress.json) ----
+
+async function voiceProgressPath($: EngineInterface): Promise<string> {
+  return `${(await $.env.get('HOME')) ?? ''}/.cache/devscope/voice/progress.json`
+}
+
+/** Reads the speaker's progress into the bar; false when nothing is speaking. */
+async function pollVoice($: EngineInterface): Promise<boolean> {
+  const text = await $.fs.read(await voiceProgressPath($)).catch(() => undefined)
+  const progress = typeof text === 'string' ? parseProgress(text) : undefined
+  if (!progress || isStale(progress, await $.clock.now())) {
+    if ((await read($, voice)) !== null) await update($, voice, () => null)
+    return false
+  }
+  await update($, voice, (current): VoiceView => ({ progress, frame: (current?.frame ?? 0) + 1 }))
+  return true
+}
+
+/** Looks once a second; while something speaks, redraws a few times a second. */
+function watchVoice($: EngineInterface) {
+  voiceIdle?.cancel()
+  voiceIdle = $.clock.every(VOICE_IDLE_MS, () => {
+    if (voiceFrames) return
+    void pollVoice($).then(active => {
+      if (!active || voiceFrames) return
+      voiceFrames = $.clock.every(VOICE_FRAME_MS, () => {
+        void pollVoice($).then(still => {
+          if (still) return
+          voiceFrames?.cancel()
+          voiceFrames = undefined
+        })
+      })
+    })
+  })
+}
+
+function stopWatchingVoice() {
+  voiceIdle?.cancel()
+  voiceFrames?.cancel()
+  voiceIdle = voiceFrames = undefined
+}
+
+/** Ends the speaker's process group (the player with it), as /devscope:voice stop does. */
+async function stopSpeaking($: EngineInterface, pid: number) {
+  const run = (argv: string[]) => $.process.run(argv, { timeoutMs: 2000 }).catch(() => undefined)
+  const group = await run(['kill', '-TERM', '--', `-${pid}`])
+  if (group?.exitCode !== 0) await run(['kill', '-TERM', String(pid)])
+  await update($, voice, () => null)
+}
+
 export const register: Register = (on, pluginOptions) => {
   options = readOptions(pluginOptions)
 
@@ -199,6 +256,7 @@ export const register: Register = (on, pluginOptions) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    if (options.voiceProgress && e.isInteractive) watchVoice($)
     // Network work never holds up the first prompt.
     $.clock.after(0, () => {
       void (async () => {
@@ -218,6 +276,8 @@ export const register: Register = (on, pluginOptions) => {
     offered.clear()
     suggestion = undefined
     await update($, band, () => null)
+    stopWatchingVoice()
+    await update($, voice, () => null)
     return next(e)
   })
 
@@ -318,13 +378,29 @@ export const register: Register = (on, pluginOptions) => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const current = await read($, band)
-    if (current === null || e.props.hasSurvey) return next(e)
+    const speaking = await read($, voice)
+    if ((current === null && speaking === null) || e.props.hasSurvey) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const clear = () => update($, band, () => null)
 
-    if (current.kind === 'stuck') {
-      return (
-        <Box flexDirection="column">
+    const voiceRow = speaking ? (
+      <Box key="voice" gap={1}>
+        <Box>
+          {runs(barCells(fraction(speaking.progress, await $.clock.now()), speaking.frame)).map((run, i) => (
+            <Text key={`voice-bar-${i}`} color={run.color}>
+              {run.char}
+            </Text>
+          ))}
+        </Box>
+        <Text dimColor>{voiceLabel(speaking.progress)}</Text>
+        <Button key="voice-stop" label="Stop" dimColor onPress={() => stopSpeaking($, speaking.progress.pid)} />
+      </Box>
+    ) : null
+
+    let bandRow = null
+    if (current?.kind === 'stuck') {
+      bandRow = (
+        <Box key="band" flexDirection="column">
           <Text color="warning">DevScope: {current.nudge.message}</Text>
           <Box gap={1}>
             <Button
@@ -349,21 +425,31 @@ export const register: Register = (on, pluginOptions) => {
           </Box>
         </Box>
       )
+    } else if (current?.kind === 'label') {
+      const answer = (label: Label) => async () => {
+        await clear()
+        await sendLabel($, current.turnStartedAt, label, 'explicit')
+        $.ui.toast('DevScope: thanks, noted.')
+      }
+      bandRow = (
+        <Box key="band" gap={1}>
+          <Text dimColor>DevScope: did that work?</Text>
+          <Button key="label-up" label="👍 Yes" onPress={answer('up')} />
+          <Button key="label-partial" label="Partly" onPress={answer('partial')} />
+          <Button key="label-down" label="👎 No" onPress={answer('down')} />
+          <Button key="label-dismiss" label="Skip" dimColor onPress={clear} />
+        </Box>
+      )
     }
 
-    const answer = (label: Label) => async () => {
-      await clear()
-      await sendLabel($, current.turnStartedAt, label, 'explicit')
-      $.ui.toast('DevScope: thanks, noted.')
+    if (voiceRow && bandRow) {
+      return (
+        <Box flexDirection="column">
+          {voiceRow}
+          {bandRow}
+        </Box>
+      )
     }
-    return (
-      <Box gap={1}>
-        <Text dimColor>DevScope: did that work?</Text>
-        <Button key="label-up" label="👍 Yes" onPress={answer('up')} />
-        <Button key="label-partial" label="Partly" onPress={answer('partial')} />
-        <Button key="label-down" label="👎 No" onPress={answer('down')} />
-        <Button key="label-dismiss" label="Skip" dimColor onPress={clear} />
-      </Box>
-    )
+    return voiceRow ?? bandRow ?? next(e)
   })
 }
