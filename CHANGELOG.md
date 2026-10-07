@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.24.1] - 2026-10-07
+
+### Added
+- `/devscope:voice speed <number>` sets any rate from 0.5 to 2 (`speed 1.35`;
+  `1,35`, `1.35x` and `.8` work too), next to the `slow`/`normal`/`fast`
+  presets. A number outside the range is refused rather than clamped, and
+  `speed` shows a custom rate as itself (`1.35x`).
+
 ## [0.24.0] - 2026-10-07
 
 ### Added

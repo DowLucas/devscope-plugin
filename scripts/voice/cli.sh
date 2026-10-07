@@ -2,7 +2,7 @@
 # /devscope:voice — turn the voice announcer and spoken reply summaries on/off,
 # mute, test, stop speech, install the Piper voice; `say` speaks text from
 # stdin (/devscope:voice explain).
-# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|replies [on|off]|speed [slow|normal|fast]|stop|say]
+# Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|replies [on|off]|speed [slow|normal|fast|<0.5-2>]|stop|say]
 set -uo pipefail
 VOICE_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
@@ -19,7 +19,7 @@ status() {
   echo "Engine: $(_ds_voice_engine) (setting: $(_ds_voice_conf .engine auto))"
   [ "$(_ds_voice_engine)" = "server" ] && \
     echo "Server voice: $(_ds_voice_conf .voice "$DS_VOICE_SERVER_VOICE") via $DEVSCOPE_URL (private sessions and outages use a local voice)"
-  echo "Speed: $(_ds_voice_speed_name) ($(_ds_voice_speed)x)"
+  echo "Speed: $(_ds_voice_speed_text)"
   echo "Delays: permission $(_ds_voice_delay permission)s, question $(_ds_voice_delay question)s," \
        "failed $(_ds_voice_delay failed)s, finished $(_ds_voice_delay finished)s" \
        "($( [ "$(_ds_voice_conf .announce_finished false)" = true ] && echo announced || echo not announced))"
@@ -62,12 +62,12 @@ replies() {
 speed() {
   local rate
   if [ -z "${1:-}" ]; then
-    echo "Speed: $(_ds_voice_speed_name) ($(_ds_voice_speed)x). Choose: slow, normal or fast."
+    echo "Speed: $(_ds_voice_speed_text). Choose slow (1.0x), normal (1.2x), fast (1.5x), or any number from 0.5 to 2."
     return 0
   fi
-  rate=$(_ds_voice_speed_preset "$1") || { echo "Usage: speed [slow|normal|fast]"; return 1; }
+  rate=$(_ds_voice_speed_preset "$1") || { echo "Usage: speed [slow|normal|fast|<0.5-2>], e.g. speed 1.35"; return 1; }
   _ds_voice_set --argjson s "$rate" '.speed = $s'
-  echo "Speed: $1 (${rate}x)"
+  echo "Speed: $(_ds_voice_speed_text)"
 }
 
 # Speak text from stdin in the background. Called by /devscope:voice explain.
@@ -179,6 +179,6 @@ case "${1:-status}" in
       "${DEVSCOPE_PRIVACY:-standard}" ;;
   setup) setup ;;
   *)
-    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|replies [on|off]|speed [slow|normal|fast]|stop]"
+    echo "Usage: /devscope:voice [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|replies [on|off]|speed [slow|normal|fast|<0.5-2>]|stop]"
     exit 1 ;;
 esac
