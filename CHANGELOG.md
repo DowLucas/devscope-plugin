@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.24.0] - 2026-10-07
 
 ### Added
-- **`/devscope:explain [topic]`** talks a topic through out loud, simply, like a
+- **`/devscope:voice explain [topic]`** talks a topic through out loud, simply, like a
   colleague at the whiteboard: the question, a concrete scenario, the options
   weighed with their catch, where it leans, and a question back to you. A short
   written card stays in the chat, and answering the question keeps the
@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reads a two-to-three sentence summary of every reply Claude finishes,
   independent of the announcer. The reply is sent to your DevScope server to
   summarize and is not stored; in `private` mode you hear only which project
-  finished, voiced locally. A turn that used `/devscope:explain` is not
+  finished, voiced locally. A turn that used `/devscope:voice explain` is not
   summarized on top. Needs a DevScope server with the `reply` voice-summary
   trigger; older servers fall back to "<project> is done".
 - **`/devscope:voice speed slow|normal|fast`** (1.0x, 1.2x, 1.5x) for every

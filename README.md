@@ -213,10 +213,10 @@ Other commands: `off`, `mute 1h`, `unmute`, `test`, `status`, `finished on` (als
 
 ### Explain it out loud
 
-`/devscope:explain [topic]` talks a topic through like a colleague at a whiteboard: the question, a concrete scenario with real names and values, the options weighed out loud, where it leans, and a question back to you. A short written card stays in the chat. Answer the question and the discussion carries on by voice. With no topic it explains whatever you were just working on.
+`/devscope:voice explain [topic]` talks a topic through like a colleague at a whiteboard: the question, a concrete scenario with real names and values, the options weighed out loud, where it leans, and a question back to you. A short written card stays in the chat. Answer the question and the discussion carries on by voice. With no topic it explains whatever you were just working on.
 
 ```
-/devscope:explain why reminders sometimes come twice
+/devscope:voice explain why reminders sometimes come twice
 ```
 
 ## What's Tracked

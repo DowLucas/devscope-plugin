@@ -18,8 +18,7 @@ hooks/
   hooks.json           # Hook event → script mappings
 commands/
   setup.md             # /devscope:setup slash command definition
-  voice.md             # /devscope:voice (on/off/replies/speed/mute/stop/test/setup)
-  explain.md           # /devscope:explain (spoken, discussion-style explanation via voice/cli.sh say)
+  voice.md             # /devscope:voice (explain/replies/speed/on/off/mute/stop/test/setup)
   backfill-usage.md    # /devscope:backfill-usage (exact usage for past sessions)
 scripts/
   _helpers.sh          # Shared helpers (config loading, SHA256, timestamps)
@@ -224,7 +223,7 @@ claude plugin disable devscope@devscope                  # Disable
   and speaks under the lock; a newer reply from the same session replaces an older one.
   This deliberately sends response text in `standard` mode too: the user turned the
   feature on for exactly that, and the endpoint stores nothing.
-- **Long speech** (`/devscope:explain` → `cli.sh say`, text on stdin): `speak.sh say` speaks
+- **Long speech** (`/devscope:voice explain` → `cli.sh say`, text on stdin): `speak.sh say` speaks
   it detached via `_ds_voice_speak_long`, which splits it into pieces of at most 400
   characters (first at most 200, so speech starts fast; `voice-audio` takes 440) and fetches
   the next piece while the current one plays. `say` touches `spoke/<claude-pid>` so that

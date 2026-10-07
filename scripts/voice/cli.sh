@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # /devscope:voice — turn the voice announcer and spoken reply summaries on/off,
 # mute, test, stop speech, install the Piper voice; `say` speaks text from
-# stdin (/devscope:explain).
+# stdin (/devscope:voice explain).
 # Usage: cli.sh [status|on|off|mute <30s|15m|1h>|unmute|test|setup|finished on|off|replies [on|off]|speed [slow|normal|fast]|stop|say]
 set -uo pipefail
 VOICE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -70,7 +70,7 @@ speed() {
   echo "Speed: $1 (${rate}x)"
 }
 
-# Speak text from stdin in the background. Called by /devscope:explain.
+# Speak text from stdin in the background. Called by /devscope:voice explain.
 say() {
   local text job pid
   text=$(cat)
