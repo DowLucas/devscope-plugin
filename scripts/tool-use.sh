@@ -19,6 +19,17 @@ INPUT=$(cat)
 # on the first line of stdout. Claude Code sees it, backgrounds this process and
 # stops waiting — everything below then runs detached, at no cost to the session.
 # In hard mode we stay synchronous so the deny below can be honored.
+#
+# The Agent tool's intent is queued before that, so SubagentStart (which runs
+# once the tool starts) always finds it.
+case "$INPUT" in
+  *'"Agent"'*|*'"Task"'*)
+    case "$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)" in
+      Agent|Task) _ds_record_agent_intent "$INPUT" ;;
+    esac
+    ;;
+esac
+
 if [ "${DEVSCOPE_NUDGE_MODE:-soft}" != "hard" ]; then
   printf '{"async": true}\n'
 fi

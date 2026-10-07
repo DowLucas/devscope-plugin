@@ -263,7 +263,7 @@ Auto voice is a short spoken summary whenever Claude finishes a reply: the outco
 | Session start/end | Session duration, permission mode |
 | Tool use | Tool name, duration, success/failure |
 | Prompt submit | Prompt length |
-| Subagent start/stop | Agent type |
+| Subagent start/stop | Agent type, task description (not in `private` mode) and model |
 | Response complete | Tools used, response length |
 | Task completed | Task details |
 | And more... | Notifications, compaction, config changes |

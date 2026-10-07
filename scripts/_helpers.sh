@@ -88,6 +88,50 @@ _ds_project_hash() {
   _ds_sha256 "${email}:${cwd}:${PPID}"
 }
 
+# Subagent intents. SubagentStart carries only agent_type and agent_id, so the
+# PreToolUse of the Agent tool queues what the subagent was asked to do and
+# agent-start.sh takes the oldest fresh intent of its type. Private mode keeps
+# the model but never the description.
+_ds_agent_intent_file() {
+  echo "${HOME}/.cache/devscope/intents/$(printf '%s' "$1" | tr -cd 'a-zA-Z0-9_-').jsonl"
+}
+
+# Usage: _ds_record_agent_intent "$HOOK_INPUT_JSON"
+_ds_record_agent_intent() {
+  local session file
+  session=$(printf '%s' "$1" | jq -r '.session_id // ""' 2>/dev/null) || return 0
+  [ -n "$session" ] || return 0
+  file=$(_ds_agent_intent_file "$session")
+  mkdir -p -m 0700 "$(dirname "$file")"
+  printf '%s' "$1" | jq -c --arg privacy "$DEVSCOPE_PRIVACY" --argjson now "$(date +%s)" '
+    .tool_input // {} | {
+      agentType: (.subagent_type // "general-purpose"),
+      description: (if $privacy == "private" then null else (.description // null) end),
+      model: (.model // null),
+      ts: $now
+    }' >> "$file" 2>/dev/null || true
+}
+
+# Prints the oldest intent of the type queued in the last 10 minutes and drops
+# it (and any older ones) from the queue. Prints nothing when there is none.
+# Usage: INTENT=$(_ds_take_agent_intent "$SESSION_ID" "$AGENT_TYPE")
+_ds_take_agent_intent() {
+  local file
+  file=$(_ds_agent_intent_file "$1")
+  [ -f "$file" ] || return 0
+  (
+    command -v flock >/dev/null 2>&1 && flock -w 2 9
+    picked=$(jq -cs --arg t "$2" --argjson now "$(date +%s)" '
+      map(select(.ts >= $now - 600))
+      | (map(.agentType == $t) | index(true)) as $i
+      | if $i == null then {take: null, rest: .}
+        else {take: .[$i], rest: (.[:$i] + .[$i + 1:])} end' "$file" 2>/dev/null) || exit 0
+    printf '%s' "$picked" | jq -c '.rest[]' > "$file"
+    [ -s "$file" ] || rm -f "$file"
+    printf '%s' "$picked" | jq -c '.take // empty | del(.ts)'
+  ) 9>"${file}.lock"
+}
+
 # Cross-platform reverse file (tac on Linux, tail -r on macOS)
 _ds_tac() {
   if command -v tac >/dev/null 2>&1; then
