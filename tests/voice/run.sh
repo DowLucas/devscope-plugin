@@ -27,7 +27,11 @@ configure() {  # extra jq
           reminder_interval: 60, max_reminders: 0} ${1:+| $1}" > "$CONF"
 }
 # Kill leftover timers and let their in-flight requests land before the next case.
-reset() { pkill -f "$S/voice/timer.sh" 2>/dev/null || true; sleep 0.5; rm -rf "$PENDING" "$DS_VOICE_SPEAK_LOG" "$DS_VOICE_PRIVACY_LOG"; reset_hits; }
+reset() {
+  pkill -f "$S/voice/timer.sh" 2>/dev/null || true; pkill -f "$S/voice/speak.sh" 2>/dev/null || true; sleep 0.5
+  rm -rf "$PENDING" "$HOME/.cache/devscope/voice/replies" "$HOME/.cache/devscope/voice/spoke" "$DS_VOICE_SPEAK_LOG" "$DS_VOICE_PRIVACY_LOG"
+  reset_hits
+}
 spoken() { cat "$DS_VOICE_SPEAK_LOG" 2>/dev/null || true; }
 lines() { spoken | grep -c . || true; }
 wait_spoken() {  # min-lines max-seconds
@@ -162,7 +166,7 @@ server_speak() {  # privacy -> prints "rc <played bytes>"
 configure; respond "RIFFfake" "audio/wav"; reset_hits
 [ "$(server_speak standard)" = "0 RIFFfake" ] && ok "server voice: plays the returned audio" || bad "server play" "$(server_speak standard)"
 [ "$(last .path)" = "/api/ai/voice-audio" ] && [ "$(last .key)" = "test-key" ] && ok "server voice: calls voice-audio with the API key" || bad "server path" "$(last .)"
-[ "$(last .body.text)/$(last .body.voice)/$(last .body.speed)" = "cloud needs you/am_michael/1.5" ] && ok "server voice: default am_michael at 1.5x" || bad "server body" "$(last .body)"
+[ "$(last .body.text)/$(last .body.voice)/$(last .body.speed)" = "cloud needs you/am_michael/1.2" ] && ok "server voice: default am_michael at 1.2x" || bad "server body" "$(last .body)"
 [ "$(last .body.volume)" = "null" ] && ok "server voice: volume left to the server by default" || bad "server volume default" "$(last .body)"
 configure '.voice = "af_heart" | .speed = 1.2 | .volume = 2.5'
 server_speak standard >/dev/null; [ "$(last .body.voice)/$(last .body.speed)/$(last .body.volume)" = "af_heart/1.2/2.5" ] && ok "server voice: voice, speed and volume from voice.json" || bad "server config" "$(last .body)"
@@ -173,11 +177,88 @@ respond '{"error":"Server voice unavailable"}' "application/json" 503
 respond '{"ok":true}'
 [ "$(DEVSCOPE_API_KEY='' server_speak standard)" = "1 " ] && ok "server voice: needs an API key" || bad "server no key" ""
 
+# 10c. Server voice for long speech: pieces fetched ahead, played in order.
+long_speak() {  # text privacy -> prints the played pieces, one per line
+  ( unset DS_VOICE_SPEAK_LOG
+    . "$S/_helpers.sh"; . "$S/voice/lib.sh"
+    _ds_voice_play() { cat "$1"; echo; }
+    _ds_voice_speak_long "$1" "$2" )
+}
+LONG=$(for i in $(seq 1 30); do printf 'Sentence number %s is here to make this explanation long enough. ' "$i"; done)
+configure; respond "RIFFpiece" "audio/wav"; reset_hits
+out=$(long_speak "$LONG" standard)
+n=$(printf '%s\n' "$out" | grep -c RIFFpiece)
+[ "$n" -ge 5 ] && [ "$(paths | grep -c voice-audio)" = "$n" ] && ok "long speech: one voice-audio request per piece, all played ($n)" || bad "long server" "n=$n paths=$(paths | tr '\n' ' ')"
+[ "$(DEVSCOPE_PRIVACY=private long_speak "$LONG" private | grep -c RIFF)" = 0 ] && ok "long speech: never the server voice for private" || bad "long private" ""
+
+# 10d. Pieces: short first, at most 400 characters, sentence ends, nothing lost.
+pieces=$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$LONG")
+[ "$(printf '%s\n' "$pieces" | head -1 | wc -c)" -le 201 ] && ok "first piece is short" || bad "first piece" "$(printf '%s\n' "$pieces" | head -1)"
+[ "$(printf '%s\n' "$pieces" | awk 'length > 400' | wc -l | tr -d ' ')" = 0 ] && ok "no piece over 400 characters" || bad "piece size" ""
+[ "$(printf '%s\n' "$pieces" | grep -vc '\.$')" = 0 ] && ok "pieces end at sentence ends" || bad "sentence ends" "$pieces"
+[ "$(printf '%s\n' "$pieces" | tr '\n' ' ' | tr -s ' ' | sed 's/ $//')" = "$(printf '%s' "$LONG" | sed 's/ $//')" ] && ok "pieces add up to the text" || bad "lossless" ""
+huge=$(for i in $(seq 1 400); do printf 'word%s. ' "$i"; done)
+[ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$huge" | wc -c | tr -d ' ')" -le 3500 ] && ok "long text is cut near 3000 characters" || bad "cap" ""
+
+# 12. Reply summaries: independent of the announcer, on every finished turn.
+STOP='{hook_event_name: "Stop", last_assistant_message: "I fixed the reminder timer. All 30 tests pass. Want me to open a PR?"}'
+jq -n '{enabled: false}' > "$CONF"; reset
+"$S/voice/cli.sh" replies >/dev/null; [ "$(jq -r .speak_replies "$CONF")" = true ] && ok "cli replies toggles on" || bad "replies toggle" "$(cat "$CONF")"
+respond '{"text": "plugin: the reminder timer is fixed and tests pass. It asks whether to open a PR."}'
+hook response-stop.sh r1 /work/plugin "$STOP"
+wait_spoken 1 5 && [ "$(spoken)" = "plugin: the reminder timer is fixed and tests pass. It asks whether to open a PR." ] && ok "reply summary spoken (announcer off)" || bad "reply" "$(spoken) $(cat "$HOME/.cache/devscope/voice/voice.log" 2>/dev/null)"
+S_AT=/api/ai/voice-summary
+[ "$(last_at $S_AT .body.trigger)/$(last_at $S_AT .body.project)" = "reply/plugin" ] && ok "asks for a reply summary" || bad "reply body" "$(last_at $S_AT .)"
+[[ "$(last_at $S_AT .body.last_message)" == *"All 30 tests pass"* ]] && ok "sends the reply to summarize" || bad "reply text" "$(last_at $S_AT .body)"
+[ "$(lines)" = 1 ] && [ ! -d "$PENDING" ] || [ -z "$(ls "$PENDING" 2>/dev/null)" ] && ok "no announcer marker when the announcer is off" || bad "announcer" "$(ls "$PENDING")"
+
+reset
+DEVSCOPE_PRIVACY=private hook response-stop.sh r2 /work/secret "$STOP"
+wait_spoken 1 5 && [ "$(spoken)" = "secret is done and waiting for you." ] && ok "private: template only" || bad "reply private" "$(spoken)"
+paths | grep -q voice-summary && bad "reply private request" "$(paths)" || ok "private: reply never sent"
+
+reset; respond '{"text": "x"}' "application/json" 500
+DEVSCOPE_URL=http://127.0.0.1:9 hook response-stop.sh r3 /work/plugin "$STOP"
+wait_spoken 1 8 && [ "$(spoken)" = "plugin is done and waiting for you." ] && ok "server down: template" || bad "reply down" "$(spoken)"
+
+# A turn that spoke an explanation is not summarized on top of it.
+reset; respond '{"text": "summary"}'
+printf 'So, the question is why reminders come twice.\n' | DS_VOICE_CLAUDE_PID=$$ "$S/voice/cli.sh" say >/dev/null
+DS_VOICE_CLAUDE_PID=$$ hook response-stop.sh r4 /work/plugin "$STOP"
+sleep 2; [ "$(spoken)" = "So, the question is why reminders come twice." ] && ok "say speaks; that turn's reply is not summarized" || bad "say/suppress" "$(spoken)"
+DS_VOICE_CLAUDE_PID=$$ hook response-stop.sh r4 /work/plugin "$STOP"
+wait_spoken 2 5 && spoken | sed -n 2p | grep -q summary && ok "the next turn is summarized again" || bad "suppress once" "$(spoken)"
+
+reset
+"$S/voice/cli.sh" mute 1h >/dev/null
+hook response-stop.sh r5 /work/plugin "$STOP"; sleep 1.5
+[ "$(lines)" = 0 ] && ok "muted: no reply summary" || bad "reply mute" "$(spoken)"
+"$S/voice/cli.sh" unmute >/dev/null
+"$S/voice/cli.sh" replies off >/dev/null; reset
+hook response-stop.sh r6 /work/plugin "$STOP"; sleep 1.5
+[ "$(lines)" = 0 ] && [ "$(hits)" = 0 ] || [ -z "$(paths | grep voice)" ] && ok "replies off: silent" || bad "replies off" "$(spoken)"
+
+# 13. stop ends speech in progress.
+mkdir -p "$HOME/.cache/devscope/voice/speakers"
+setsid sleep 30 & SPK=$!
+: > "$HOME/.cache/devscope/voice/speakers/$SPK"
+[[ "$("$S/voice/cli.sh" stop)" == *"Stopped (1 speaking)"* ]] && sleep 0.3 && ! kill -0 "$SPK" 2>/dev/null && ok "stop kills the speaker" || bad "stop" "still running"
+wait "$SPK" 2>/dev/null || true
+
 # 11. CLI.
 "$S/voice/cli.sh" off >/dev/null; [ "$(jq -r .enabled "$CONF")" = false ] && ok "cli off" || bad "cli off" "$(cat "$CONF")"
 out=$("$S/voice/cli.sh" on); printf '%s' "$out" | grep -q "Voice announcer: on" && ok "cli on prints status" || bad "cli on" ""
 "$S/voice/cli.sh" mute 15m >/dev/null; [ "$(jq -r .mute_until "$CONF")" -gt $(( $(date +%s) + 890 )) ] && ok "cli mute 15m" || bad "mute" "$(cat "$CONF")"
 "$S/voice/cli.sh" mute soon >/dev/null && bad "bad duration" "accepted" || ok "cli rejects a bad duration"
+[[ "$("$S/voice/cli.sh" status)" == *"Reply summaries: off"* ]] && ok "status shows reply summaries" || bad "status replies" ""
+"$S/voice/cli.sh" speed slow >/dev/null; [ "$(jq -r .speed "$CONF")" = 1.0 ] && ok "cli speed slow = 1.0x" || bad "speed slow" "$(cat "$CONF")"
+"$S/voice/cli.sh" speed fast >/dev/null; [ "$(jq -r .speed "$CONF")" = 1.5 ] && ok "cli speed fast = 1.5x" || bad "speed fast" "$(cat "$CONF")"
+[[ "$("$S/voice/cli.sh" speed)" == *"Speed: fast (1.5x)"* ]] && ok "cli speed shows the preset" || bad "speed show" "$("$S/voice/cli.sh" speed)"
+"$S/voice/cli.sh" speed warp >/dev/null && bad "bad speed" "accepted" || ok "cli rejects an unknown speed"
+"$S/voice/cli.sh" speed normal >/dev/null; [ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_speed_name)" = normal ] && ok "cli speed normal" || bad "speed normal" "$(cat "$CONF")"
+jq '.speed = 9' "$CONF" > "$TMP/c" && mv "$TMP/c" "$CONF"
+[ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_speed)" = 2 ] && ok "a hand-edited speed is clamped to 2x" || bad "clamp" ""
+printf '  \n' | "$S/voice/cli.sh" say >/dev/null && bad "empty say" "accepted" || ok "say rejects empty text"
 
 reset
 echo "---"; echo "$pass passed, $fail failed"

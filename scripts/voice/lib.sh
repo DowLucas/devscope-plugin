@@ -1,14 +1,21 @@
 # shellcheck shell=bash
-# Voice announcer: speaks when a Claude Code session has been waiting on the
-# user past a grace delay. Sourced (after _helpers.sh) by send-event.sh, which
-# arms and clears on every hook event, by timer.sh, which waits and announces,
-# and by cli.sh (/devscope:voice). Opt-in: nothing happens until voice.json
-# says enabled.
+# Voice: the announcer, which speaks when a Claude Code session has been
+# waiting on the user past a grace delay; spoken reply summaries after every
+# finished turn; and long speech for /devscope:explain. Sourced (after
+# _helpers.sh) by send-event.sh, which arms and clears on every hook event, by
+# timer.sh, which waits and announces, by speak.sh, which speaks replies and
+# explanations, and by cli.sh (/devscope:voice). Opt-in: the announcer stays
+# silent until voice.json says enabled, reply summaries until speak_replies.
 #
 # State under ~/.cache/devscope/voice/:
 #   pending/<session>.json  one marker per blocked session. Later activity from
 #                           that session deletes it, which is how answering in
 #                           time keeps the announcer silent.
+#   replies/<session>.json  the latest finished turn to summarize, per session.
+#   say/<id>.json           an explanation waiting to be spoken.
+#   spoke/<claude-pid>      this turn already spoke an explanation, so its
+#                           reply is not summarized on top of it.
+#   speakers/<pid>          running speak.sh processes, for /devscope:voice stop.
 #   speak.lock              serializes speech across all sessions.
 #   voice.log               errors and announcements.
 
@@ -34,17 +41,32 @@ DS_VOICE_MIN_REMINDER_INTERVAL=5
 DS_VOICE_MAX_SLEEP=30
 # A speech engine or player that hangs longer than this is killed.
 DS_VOICE_SPEAK_TIMEOUT=30
-# Server voice (Kokoro): defaults for voice.json `voice` and `speed`.
+# Server voice (Kokoro): default for voice.json `voice`.
 DS_VOICE_SERVER_VOICE=am_michael
-DS_VOICE_SERVER_SPEED=1.5
+# Speech rate for every engine, 1 = the voice's natural pace. voice.json
+# `speed` holds a number; /devscope:voice speed sets one of three presets.
+DS_VOICE_SPEED_SLOW=1.0
+DS_VOICE_SPEED_NORMAL=1.2
+DS_VOICE_SPEED_FAST=1.5
 DS_VOICE_SERVER_TIMEOUT=20
 # Gemini takes ~3 s warm for a summary; this runs in the background timer, so
 # waiting longer costs the user nothing and avoids falling back to the template.
 DS_VOICE_SUMMARY_TIMEOUT=10
+# Long speech is voiced in pieces: /api/ai/voice-audio takes at most 440
+# characters. The first piece is short so speech starts quickly; the next one
+# is fetched while the current one plays.
+DS_VOICE_CHUNK_FIRST=200
+DS_VOICE_CHUNK_MAX=400
+# Longest text spoken at once (~3 minutes at 1.2x); the rest is cut.
+DS_VOICE_LONG_MAX=3000
+# How much of Claude's reply is sent for a summary (the server takes 4000).
+DS_VOICE_REPLY_HEAD=2800
+DS_VOICE_REPLY_TAIL=1100
 
 # State and log can hold summaries of the user's work: keep them owner-only.
 _ds_voice_mkdirs() {
-  ( umask 077; mkdir -p "$DS_VOICE_PENDING" ) 2>/dev/null
+  ( umask 077; mkdir -p "$DS_VOICE_PENDING" "$DS_VOICE_DIR/replies" "$DS_VOICE_DIR/say" \
+      "$DS_VOICE_DIR/spoke" "$DS_VOICE_DIR/speakers" ) 2>/dev/null
 }
 
 _ds_voice_log() {
@@ -70,6 +92,39 @@ _ds_voice_int() {
 
 _ds_voice_enabled() {
   [ -f "$DS_VOICE_CONFIG" ] && [ "$(_ds_voice_conf .enabled false)" = "true" ]
+}
+
+_ds_voice_replies_on() {
+  [ -f "$DS_VOICE_CONFIG" ] && [ "$(_ds_voice_conf .speak_replies false)" = "true" ]
+}
+
+_ds_voice_muted() {
+  [ "$(_ds_voice_int .mute_until 0)" -gt "$(date +%s)" ]
+}
+
+_ds_voice_speed_preset() {  # slow|normal|fast -> rate
+  case "$1" in
+    slow) printf '%s' "$DS_VOICE_SPEED_SLOW" ;;
+    normal) printf '%s' "$DS_VOICE_SPEED_NORMAL" ;;
+    fast) printf '%s' "$DS_VOICE_SPEED_FAST" ;;
+    *) return 1 ;;
+  esac
+}
+
+# The speech rate, clamped to what the server voice accepts (0.5-2).
+_ds_voice_speed() {
+  _ds_voice_conf .speed "$DS_VOICE_SPEED_NORMAL" | awk -v d="$DS_VOICE_SPEED_NORMAL" '
+    { v = $0 + 0; if ($0 !~ /^[0-9]*\.?[0-9]+$/) v = d; if (v < 0.5) v = 0.5; if (v > 2) v = 2; print v }'
+}
+
+# The preset a rate matches, or "custom".
+_ds_voice_speed_name() {
+  case "$(_ds_voice_speed)" in
+    "$DS_VOICE_SPEED_SLOW"|1) echo slow ;;
+    "$DS_VOICE_SPEED_NORMAL") echo normal ;;
+    "$DS_VOICE_SPEED_FAST") echo fast ;;
+    *) echo custom ;;
+  esac
 }
 
 # Grace delay before the first announcement, per trigger type.
@@ -100,6 +155,7 @@ _ds_voice_marker() {
 
 # Arm or clear from one hook event. Arguments: DevScope event type, raw hook input.
 _ds_voice_on_event() {
+  _ds_voice_on_reply_event "$1" "$2"
   _ds_voice_enabled || return 0
   local et="$1" input="$2" sid tool m
   sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
@@ -138,6 +194,64 @@ _ds_voice_on_event() {
       _ds_voice_clear "$sid" ;;
   esac
   return 0
+}
+
+# --- Reply summaries (/devscope:voice replies on) ---
+
+# Independent of the announcer: on every finished turn, queue Claude's reply
+# for speak.sh to summarize and speak. A turn that already spoke an explanation
+# (/devscope:explain) is not summarized on top of it.
+_ds_voice_on_reply_event() {  # event-type hook-input
+  _ds_voice_replies_on || return 0
+  local et="$1" input="$2" sid pid eid job tmp privacy="${DEVSCOPE_PRIVACY:-standard}" last=""
+  case "$et" in
+    prompt.submit)
+      # A turn interrupted after it spoke never reached Stop: forget it.
+      pid=$(_ds_voice_claude_pid)
+      [ -n "$pid" ] && rm -f "$DS_VOICE_DIR/spoke/$pid"
+      return 0 ;;
+    response.complete) ;;
+    *) return 0 ;;
+  esac
+  pid=$(_ds_voice_claude_pid)
+  if [ -n "$pid" ] && [ -f "$DS_VOICE_DIR/spoke/$pid" ]; then
+    rm -f "$DS_VOICE_DIR/spoke/$pid"
+    return 0
+  fi
+  _ds_voice_muted && return 0
+  [ "$(_ds_voice_conf .engine auto)" = "off" ] && return 0
+  sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
+  [ -n "$sid" ] || return 0
+  # Private sessions keep the reply on this machine and get the template.
+  [ "$privacy" = "private" ] || last=$(printf '%s' "$input" | jq -r \
+    --argjson h "$DS_VOICE_REPLY_HEAD" --argjson t "$DS_VOICE_REPLY_TAIL" '
+      .last_assistant_message // "" | if length > ($h + $t) then .[:$h] + " ... " + .[-$t:] else . end' 2>/dev/null)
+  eid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "r-$(_ds_now_ns)")
+  _ds_voice_mkdirs
+  job="$DS_VOICE_DIR/replies/$(printf '%s' "$sid" | tr -cd 'A-Za-z0-9_-').json"
+  tmp="$job.tmp.$$"
+  jq -n --arg eid "$eid" --arg sid "$sid" --arg privacy "$privacy" --arg last "$last" \
+    --arg project "$(basename "$(printf '%s' "$input" | jq -r '.cwd // "session"' 2>/dev/null)")" \
+    '{eventId: $eid, sessionId: $sid, project: $project, lastMessage: $last, privacy: $privacy}' \
+    > "$tmp" && mv "$tmp" "$job" || { rm -f "$tmp"; return 0; }
+  _ds_voice_spawn "$DS_VOICE_LIB_DIR/speak.sh" reply "$sid" "$eid"
+}
+
+# The text for a queued reply: an AI summary, or the template when the session
+# is private, the reply was empty or the server fails.
+_ds_voice_reply_text() {  # job-file
+  local body text="" project privacy
+  read -r privacy < <(jq -r '.privacy' "$1" 2>/dev/null) || return 1
+  project=$(jq -r '.project' "$1" 2>/dev/null)
+  if [ "$privacy" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ]; then
+    body=$(jq -c '{trigger: "reply", project: .project, last_message: .lastMessage}
+                  | with_entries(select(.value != ""))' "$1" 2>/dev/null)
+    if printf '%s' "$body" | jq -e '.last_message' >/dev/null 2>&1; then
+      text=$(_ds_api POST /api/ai/voice-summary "$body" "$DS_VOICE_SUMMARY_TIMEOUT" | jq -r '.text // empty' 2>/dev/null)
+    fi
+  fi
+  [ -n "$text" ] || text=$(_ds_voice_template finished "$project")
+  printf '%s' "$text"
 }
 
 # Delete a session's marker. With a tool name, only a marker for that tool (or
@@ -418,24 +532,33 @@ _ds_voice_with_lock() {
 # so no local model is needed. Only for text the server already produced or
 # may see: never for `private` sessions. Fails when the server has no voice.
 _ds_voice_server() {  # text privacy
-  local wav body code rc cfg=""
+  local wav rc=1
+  wav="$(mktemp "${TMPDIR:-/tmp}/ds-voice.XXXXXX")" || return 1
+  if _ds_voice_server_fetch "$1" "${2:-standard}" "$wav"; then
+    _ds_voice_play "$wav"; rc=$?
+  fi
+  rm -f "$wav"
+  return "$rc"
+}
+
+# Fetch the server voice for a text (at most 440 characters) into a WAV file.
+_ds_voice_server_fetch() {  # text privacy out-file
+  local body code cfg=""
   [ "${2:-standard}" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ] || return 1
   # volume is only sent when set, so the server's default applies otherwise.
   body=$(jq -nc --arg t "$1" --arg v "$(_ds_voice_conf .voice "$DS_VOICE_SERVER_VOICE")" \
-    --argjson s "$(_ds_voice_conf .speed "$DS_VOICE_SERVER_SPEED")" \
+    --argjson s "$(_ds_voice_speed)" \
     --arg vol "$(_ds_voice_conf .volume "")" \
     '{text: $t, voice: $v, speed: $s} + (if $vol == "" then {} else {volume: ($vol | tonumber)} end)' 2>/dev/null) || return 1
-  wav="$(mktemp "${TMPDIR:-/tmp}/ds-voice.XXXXXX")" || return 1
   cfg="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
-  code=$(printf '%s' "$cfg" | curl --config - -s -o "$wav" -w '%{http_code} %{content_type}' \
+  code=$(printf '%s' "$cfg" | curl --config - -s -o "$3" -w '%{http_code} %{content_type}' \
     -X POST "${DEVSCOPE_URL}/api/ai/voice-audio" -H "x-requested-with: devscope-cli" \
     -H "Content-Type: application/json" -d "$body" --max-time "$DS_VOICE_SERVER_TIMEOUT" 2>/dev/null)
   case "$code" in
-    "200 audio/"*) _ds_voice_play "$wav"; rc=$? ;;
-    *) _ds_voice_log "server voice unavailable (${code:-no response})"; rc=1 ;;
+    "200 audio/"*) return 0 ;;
   esac
-  rm -f "$wav"
-  return "$rc"
+  _ds_voice_log "server voice unavailable (${code:-no response}) $(head -c 160 "$3" 2>/dev/null | tr -d '\n')"
+  return 1
 }
 
 _ds_voice_piper_bin() {
@@ -476,17 +599,24 @@ _ds_voice_piper() {
   model=$(_ds_voice_conf .piper_model "$DS_VOICE_DEFAULT_MODEL")
   [ -f "$model" ] || return 1
   wav="$(mktemp "${TMPDIR:-/tmp}/ds-voice.XXXXXX")" || return 1
-  printf '%s\n' "$1" | _ds_voice_run "$bin" --model "$model" --output_file "$wav" >/dev/null 2>&1 && _ds_voice_play "$wav"
+  # Piper stretches time: a length scale of 1/speed.
+  printf '%s\n' "$1" | _ds_voice_run "$bin" --model "$model" --output_file "$wav" \
+    --length_scale "$(awk -v s="$(_ds_voice_speed)" 'BEGIN { printf "%.2f", 1 / s }')" >/dev/null 2>&1 && _ds_voice_play "$wav"
   rc=$?
   rm -f "$wav"
   return "$rc"
 }
 
 _ds_voice_system() {
-  if command -v say >/dev/null 2>&1; then _ds_voice_run say "$1"
-  elif command -v spd-say >/dev/null 2>&1; then _ds_voice_run spd-say -w "$1"
-  elif command -v espeak-ng >/dev/null 2>&1; then _ds_voice_run espeak-ng "$1"
-  elif command -v espeak >/dev/null 2>&1; then _ds_voice_run espeak "$1"
+  local s wpm rate
+  s=$(_ds_voice_speed)
+  # say and espeak take words per minute (about 175 is natural); spd-say -100..100.
+  wpm=$(awk -v s="$s" 'BEGIN { printf "%d", 175 * s }')
+  rate=$(awk -v s="$s" 'BEGIN { r = (s - 1) * 100; if (r > 100) r = 100; if (r < -100) r = -100; printf "%d", r }')
+  if command -v say >/dev/null 2>&1; then _ds_voice_run say -r "$wpm" "$1"
+  elif command -v spd-say >/dev/null 2>&1; then _ds_voice_run spd-say -w -r "$rate" "$1"
+  elif command -v espeak-ng >/dev/null 2>&1; then _ds_voice_run espeak-ng -s "$wpm" "$1"
+  elif command -v espeak >/dev/null 2>&1; then _ds_voice_run espeak -s "$wpm" "$1"
   else return 1
   fi >/dev/null 2>&1
 }
@@ -529,7 +659,77 @@ _ds_voice_speak() {  # text [privacy]
   case "$engine" in
     auto|server) _ds_voice_server "$1" "$privacy" && return 0 ;;
   esac
-  if [ "$engine" != "system" ] && _ds_voice_piper "$1"; then return 0; fi
-  _ds_voice_system "$1" || _ds_voice_log "no speech engine available"
+  _ds_voice_speak_local "$1"
+}
+
+# Piper when installed (unless the engine is `system`), else the OS voice.
+_ds_voice_speak_local() {  # text
+  local text
+  text=$(printf '%s' "$1" | sed 's/^[^[:alnum:]]*//')
+  [ -n "$text" ] || return 0
+  if [ "$(_ds_voice_conf .engine auto)" != "system" ] && _ds_voice_piper "$text"; then return 0; fi
+  _ds_voice_system "$text" || _ds_voice_log "no speech engine available"
+  return 0
+}
+
+# --- Long speech (explanations, reply summaries) ---
+
+# Split a text into pieces of at most DS_VOICE_CHUNK_MAX characters (the first
+# at most DS_VOICE_CHUNK_FIRST), ending at sentence ends where possible. One
+# piece per line; the text is cut after DS_VOICE_LONG_MAX characters.
+_ds_voice_chunks() {
+  printf '%s\n' "$1" | tr '\n\r\t' '   ' | awk -v first="$DS_VOICE_CHUNK_FIRST" \
+    -v max="$DS_VOICE_CHUNK_MAX" -v cap="$DS_VOICE_LONG_MAX" '
+    { for (i = 1; i <= NF; i++) w[++n] = $i }
+    END {
+      cur = ""; lim = first; total = 0
+      for (i = 1; i <= n && total < cap; i++) {
+        word = substr(w[i], 1, max)
+        if (cur != "" && length(cur) + 1 + length(word) > lim) { print cur; total += length(cur); cur = ""; lim = max }
+        cur = (cur == "" ? word : cur " " word)
+        # A sentence end closes a piece once it is half full.
+        if (length(cur) >= lim / 2 && word ~ /[.!?:;][")]*$/) { print cur; total += length(cur); cur = ""; lim = max }
+      }
+      if (cur != "" && total < cap) print cur
+    }'
+}
+
+# Speak a long text piece by piece. With the server voice the next piece is
+# fetched while the current one plays, so there is no gap; if the server fails
+# partway, the rest is spoken with a local voice.
+_ds_voice_speak_long() {  # text [privacy]
+  local privacy="${2:-standard}" engine chunk dir next i=0 n
+  local -a chunks=()
+  while IFS= read -r chunk; do
+    [ -n "$chunk" ] && chunks+=("$chunk")
+  done < <(_ds_voice_chunks "$1")
+  n=${#chunks[@]}
+  [ "$n" -gt 0 ] || return 0
+  engine=$(_ds_voice_conf .engine auto)
+  [ "$engine" = "off" ] && return 0
+  if [ -n "${DS_VOICE_SPEAK_LOG:-}" ] || [ "$privacy" = "private" ] || [ -z "${DEVSCOPE_API_KEY:-}" ] || \
+     { [ "$engine" != "auto" ] && [ "$engine" != "server" ]; }; then
+    for chunk in "${chunks[@]}"; do _ds_voice_speak "$chunk" "$privacy"; done
+    return 0
+  fi
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/ds-voice.XXXXXX") || return 0
+  if ! _ds_voice_server_fetch "${chunks[0]}" "$privacy" "$dir/0.wav"; then
+    for chunk in "${chunks[@]}"; do _ds_voice_speak_local "$chunk"; done
+    rm -rf "$dir"
+    return 0
+  fi
+  while [ "$i" -lt "$n" ]; do
+    next=""
+    if [ $((i + 1)) -lt "$n" ]; then
+      _ds_voice_server_fetch "${chunks[$((i + 1))]}" "$privacy" "$dir/$((i + 1)).wav" &
+      next=$!
+    fi
+    _ds_voice_play "$dir/$i.wav"
+    i=$((i + 1))
+    if [ -n "$next" ] && ! wait "$next"; then
+      while [ "$i" -lt "$n" ]; do _ds_voice_speak_local "${chunks[$i]}"; i=$((i + 1)); done
+    fi
+  done
+  rm -rf "$dir"
   return 0
 }

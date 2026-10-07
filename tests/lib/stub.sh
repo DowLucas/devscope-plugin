@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Start tests/lib/stub_server.py for a hook test. Source after setting TMP.
-# Sets DEVSCOPE_URL/DEVSCOPE_API_KEY and defines respond/slow/hits/last.
+# Sets DEVSCOPE_URL/DEVSCOPE_API_KEY and defines respond/slow/hits/last/last_at.
 STUB_DIR="$TMP/stub"; mkdir -p "$STUB_DIR"; : > "$STUB_DIR/resp"
 _port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
 python3 "$(dirname "${BASH_SOURCE[0]}")/stub_server.py" "$_port" "$STUB_DIR" >"$TMP/server.log" 2>&1 &
@@ -20,3 +20,4 @@ reset_hits() { : > "$STUB_DIR/hits"; : > "$STUB_DIR/paths"; }
 paths() { cat "$STUB_DIR/paths" 2>/dev/null; }
 hits() { [ -f "$STUB_DIR/hits" ] && wc -c < "$STUB_DIR/hits" | tr -d ' ' || echo 0; }
 last() { jq -r "$1" "$STUB_DIR/last"; }
+last_at() { jq -r "$2" "$STUB_DIR/last$(printf '%s' "$1" | tr / _)"; }  # path jq
