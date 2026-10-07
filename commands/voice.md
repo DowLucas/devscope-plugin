@@ -73,6 +73,7 @@ Spoken-script rules:
 - **Length by level** (table above). Never more than the level's upper bound.
 - **Written for the ear:** short sentences, contractions, "so", "now", "here's the thing". No markdown, bullets, code, file paths, URLs, symbols or emoji. Say names in words ("the reminder timer", not `timer.sh`). Spell out abbreviations a voice would stumble on, or avoid them.
 - **Plain English.** Define any unavoidable jargon in the same sentence.
+- **Say technical shorthand the way a person would.** The voice spells capitals letter by letter, so acronyms said that way stay in capitals (API, CLI, PR, SSH). Write the rest as spoken words: "jay-son" for JSON, "the readme", "yammel" for YAML, "version two point one", "five seconds", "one point two times", "for example", "versus". Never read out identifiers, file names, flags or paths (`useActivityStore`, `voice.json`, `--short`): say what they are ("the activity store", "the voice settings file", "the short option").
 - No line in the script may be exactly `DEVSCOPE_SPEECH`.
 
 ### Step 2: the written card
