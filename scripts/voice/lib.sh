@@ -617,10 +617,14 @@ _ds_voice_server_fetch() {  # text privacy out-file [attempts]
   local body code cfg="" attempt=1 attempts="${4:-2}"
   [ "${2:-standard}" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ] || return 1
   # volume is only sent when set, so the server's default applies otherwise.
+  # `model` picks the server's voice by name (/devscope:voice model); unset, the
+  # server's default. `voice` is a Kokoro voice name, ignored by other voices.
   body=$(jq -nc --arg t "$1" --arg v "$(_ds_voice_conf .voice "$DS_VOICE_SERVER_VOICE")" \
+    --arg model "$(_ds_voice_conf .model "")" \
     --argjson s "$(_ds_voice_speed)" \
     --arg vol "$(_ds_voice_conf .volume "")" \
-    '{text: $t, voice: $v, speed: $s} + (if $vol == "" then {} else {volume: ($vol | tonumber)} end)' 2>/dev/null) || return 1
+    '{text: $t, voice: $v, speed: $s} + (if $vol == "" then {} else {volume: ($vol | tonumber)} end)
+     + (if $model == "" then {} else {model: $model} end)' 2>/dev/null) || return 1
   cfg="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
   while :; do
     code=$(printf '%s' "$cfg" | curl --config - -s -o "$3" -w '%{http_code} %{content_type}' \
