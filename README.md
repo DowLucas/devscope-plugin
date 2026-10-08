@@ -148,6 +148,10 @@ DEVSCOPE_HINTS=off                   # no hints
 DEVSCOPE_HINT_AFTER_PR=/review-pr    # suggest a different command (default: /code-review)
 ```
 
+## New model check
+
+The first time you use a model (at session start or after `/model`), DevScope shows `DevScope: first time on <model>.` and asks Claude to offer, in one question, to check your CLAUDE.md and memory files for instructions about model selection and usage, such as rules that name an older model, and update them. Nothing is read or changed unless you say yes. Models already seen are listed in `~/.cache/devscope/models-seen`; the model you are on when the plugin first runs counts as seen. A `model.first_use` event appears in the dashboard's live feed. `DEVSCOPE_HINTS=off` turns the question off.
+
 ## Token usage and cost
 
 DevScope shows each session's tokens and its **API-equivalent cost**: what those tokens would cost at Anthropic's API list prices, which is not what a Claude subscription plan charges you. The Stop and SessionEnd hooks sum every API call in the session transcript and its subagent transcripts, per model, and send the totals. Only token counts and model ids are sent, never transcript content.

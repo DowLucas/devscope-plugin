@@ -9,6 +9,15 @@
             "async": true
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/model-first-use.sh",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -314,6 +323,15 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/model-switch.sh",
             "async": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/model-first-use.sh",
+            "timeout": 5
           }
         ]
       }
