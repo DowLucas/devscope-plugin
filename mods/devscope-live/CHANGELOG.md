@@ -2,6 +2,15 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-10-08
+
+### Changed
+- **Voice bar per session.** The bar and its Stop button appear only in the
+  window whose session is speaking; every other window shows one dimmed line,
+  "🔊 api-service, rate limiter fix · reading the summary". Progress from a
+  devscope plugin older than 0.34.0 names no session and still shows the bar
+  everywhere.
+
 ## [0.3.0] - 2026-10-07
 
 ### Changed

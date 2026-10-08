@@ -6,7 +6,7 @@ import { SUGGEST, afterPrompt, basename, fitsSuggestion, nextPromptsBody, should
 import { matchSkill } from '../hooks/teamSkills'
 import type { TeamSkill } from '../hooks/teamSkills'
 import { isPrUrl, linkFromBash, parseGhPr, withTrailer, withoutCredentials } from '../hooks/vcs'
-import { LEVELS, TRACK, TRACK_COLOR, barCells, fraction, isStale, parseProgress, runs, voiceLabel } from '../hooks/voiceBar'
+import { LEVELS, TRACK, TRACK_COLOR, barCells, fraction, isOwnSpeech, isStale, otherSpeechLabel, parseProgress, runs, voiceLabel } from '../hooks/voiceBar'
 import type { VoiceProgress } from '../types'
 
 const skill = (id: string, ...triggerPhrases: string[]): TeamSkill => ({
@@ -171,7 +171,24 @@ describe('voice bar', () => {
     pieceMs: 10_000,
     at: 1_000_000,
     pid: 4242,
+    sessionId: '',
     ...over,
+  })
+
+  test('the bar belongs to the session that speaks; older plugins name none', () => {
+    expect(parseProgress(JSON.stringify({ ...progress(), sessionId: undefined }))?.sessionId).toBe('')
+    expect(parseProgress(JSON.stringify(progress({ sessionId: 's-1' })))?.sessionId).toBe('s-1')
+    expect(parseProgress(JSON.stringify({ ...progress(), sessionId: 7 }))?.sessionId).toBe('')
+    expect(isOwnSpeech(progress({ sessionId: 's-1' }), 's-1')).toBe(true)
+    expect(isOwnSpeech(progress({ sessionId: 's-1' }), 's-2')).toBe(false)
+    expect(isOwnSpeech(progress(), 's-2')).toBe(true)
+  })
+
+  test('other windows get one line naming the session', () => {
+    expect(otherSpeechLabel(progress({ kind: 'reply', project: 'api, rate limiter fix', piece: 0, pieces: 1 }))).toBe(
+      '🔊 api, rate limiter fix · reading the summary',
+    )
+    expect(otherSpeechLabel(progress({ project: '', phase: 'voicing' }))).toBe('🔊 Another session · creating audio')
   })
 
   test('parses the speaker file and rejects anything malformed', () => {

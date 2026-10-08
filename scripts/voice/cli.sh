@@ -203,7 +203,8 @@ say() {
   _ds_voice_mkdirs
   job="$DS_VOICE_DIR/say/$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "s-$(_ds_now_ns)").json"
   ( umask 077; jq -n --arg t "$text" --arg p "${DEVSCOPE_PRIVACY:-standard}" --arg project "$(basename "$PWD")" \
-      '{text: $t, privacy: $p, project: $project}' > "$job" ) || return 1
+      --arg sid "$(_ds_voice_this_session)" \
+      '{text: $t, privacy: $p, project: $project, sessionId: $sid}' > "$job" ) || return 1
   # This turn spoke: auto voice does not summarize its reply on top.
   pid=$(_ds_voice_claude_pid)
   [ -n "$pid" ] && : > "$DS_VOICE_DIR/spoke/$pid"

@@ -265,6 +265,31 @@ printf 'One short explanation.\n' | "$S/voice/cli.sh" say >/dev/null
 wait_spoken 1 5; sleep 0.5
 [ ! -f "$HOME/.cache/devscope/voice/progress.json" ] && ok "progress file removed when speech ends" || bad "progress cleanup" "$(cat "$HOME/.cache/devscope/voice/progress.json")"
 
+# 10f. The bar is per session: progress.json names the session speaking.
+PJ="$HOME/.cache/devscope/voice/progress.json"
+progress_of() {  # wait for a speaking progress file, print a jq field
+  for _ in $(seq 1 60); do [ -f "$PJ" ] && jq -e '.phase == "speaking"' "$PJ" >/dev/null 2>&1 && { jq -r "$1" "$PJ"; return; }; sleep 0.1; done
+}
+configure; reset; "$S/voice/cli.sh" auto-default on >/dev/null; respond '{"text": "Reply done."}'
+DS_VOICE_TEST_SPEAK_SEC=1.5 hook response-stop.sh own-reply /work/api '{hook_event_name: "Stop", last_assistant_message: "Done."}'
+[ "$(progress_of .sessionId)" = own-reply ] && ok "bar per session: a reply's progress names its session" || bad "progress reply session" "$(cat "$PJ" 2>/dev/null)"
+wait_spoken 1 5; "$S/voice/cli.sh" auto-default off >/dev/null
+
+# An explanation is started by a command, which is not told the session: the
+# prompt hook recorded which session that Claude Code window runs.
+configure; reset; sleep 60 & fakeclaude=$!
+DS_VOICE_CLAUDE_PID=$fakeclaude hook prompt-submit.sh ex-session /work/api '{hook_event_name: "UserPromptSubmit", prompt: "explain it"}'
+[ "$(cat "$HOME/.cache/devscope/voice/sessions/$fakeclaude" 2>/dev/null)" = ex-session ] && ok "bar per session: the prompt hook records the window's session" || bad "session record" "$(ls "$HOME/.cache/devscope/voice/sessions" 2>/dev/null)"
+printf 'An explanation for one session.\n' | DS_VOICE_CLAUDE_PID=$fakeclaude DS_VOICE_TEST_SPEAK_SEC=1.5 "$S/voice/cli.sh" say >/dev/null
+[ "$(progress_of .sessionId)" = ex-session ] && ok "bar per session: an explanation's progress names the session that asked" || bad "progress explain session" "$(cat "$PJ" 2>/dev/null)"
+wait_spoken 1 5; kill "$fakeclaude" 2>/dev/null || true
+
+# Someone who never set up voice pays no process lookups for it.
+rm -f "$CONF"; rm -rf "$HOME/.cache/devscope/voice/sessions"
+( unset CLAUDE_PID; DS_VOICE_CLAUDE_PID=12345 hook prompt-submit.sh nv-session /work/api '{hook_event_name: "UserPromptSubmit", prompt: "hi there"}' )
+[ -z "$(ls "$HOME/.cache/devscope/voice/sessions" 2>/dev/null)" ] && ok "bar per session: nothing recorded without voice set up" || bad "session record gate" "$(ls "$HOME/.cache/devscope/voice/sessions")"
+configure
+
 # 11b. Screen lock: detection, then each kind of speech.
 mkdir -p "$TMP/bin"
 cat > "$TMP/bin/loginctl" <<'EOF'

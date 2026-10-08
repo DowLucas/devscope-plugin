@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.34.0] - 2026-10-08
+
+### Added
+- **The voice bar shows in the session that is speaking.** `progress.json`
+  carries `sessionId` (the Claude Code session the speech is about) and, for
+  replies, the session's spoken name as `project`. Explanations are started by
+  a command that is not told the session, so the prompt hook records each
+  window's session in `~/.cache/devscope/voice/sessions/<claude-pid>` (only
+  when voice is set up or Claude Code passes its PID) and `/devscope:voice
+  explain` looks it up. Needs devscope-live 0.4.0 to take effect.
+
 ## [0.33.0] - 2026-10-08
 
 ### Fixed

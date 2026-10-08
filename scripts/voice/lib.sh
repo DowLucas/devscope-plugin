@@ -21,7 +21,10 @@
 #                           window (/devscope:voice auto), over the default.
 #   speakers/<pid>          running speak.sh processes, for /devscope:voice stop.
 #   progress.json           what the speaking speak.sh is doing, for the
-#                           devscope-live mod's progress bar.
+#                           devscope-live mod's progress bar; `sessionId` says
+#                           whose speech it is, so only that window shows the bar.
+#   sessions/<claude-pid>   the Claude Code session id of that window, written on
+#                           each prompt, so /devscope:voice explain knows it.
 #   speak.lock              serializes speech across all sessions.
 #   queue/<ns>-<pid>        one ticket per process waiting to speak; the oldest
 #                           live ticket speaks next, so speech is first come,
@@ -90,7 +93,8 @@ DS_VOICE_REPLY_TAIL=1100
 # State and log can hold summaries of the user's work: keep them owner-only.
 _ds_voice_mkdirs() {
   ( umask 077; mkdir -p "$DS_VOICE_PENDING" "$DS_VOICE_DIR/replies" "$DS_VOICE_DIR/say" \
-      "$DS_VOICE_DIR/spoke" "$DS_VOICE_DIR/speakers" "$DS_VOICE_DIR/auto" "$DS_VOICE_DIR/labels" "$DS_VOICE_DIR/queue" ) 2>/dev/null
+      "$DS_VOICE_DIR/spoke" "$DS_VOICE_DIR/speakers" "$DS_VOICE_DIR/auto" "$DS_VOICE_DIR/labels" "$DS_VOICE_DIR/queue" \
+      "$DS_VOICE_DIR/sessions" ) 2>/dev/null
 }
 
 # --- Session labels ---
@@ -349,6 +353,7 @@ _ds_voice_marker() {
 
 # Arm or clear from one hook event. Arguments: DevScope event type, raw hook input.
 _ds_voice_on_event() {
+  [ "$1" = prompt.submit ] && _ds_voice_note_session "$2"
   _ds_voice_on_reply_event "$1" "$2"
   _ds_voice_enabled || return 0
   local et="$1" input="$2" sid tool m
@@ -581,6 +586,32 @@ _ds_voice_arm() {  # session-id type hook-input
       claudePid: $pid, match: $match}' \
     > "$tmp" && mv "$tmp" "$m" || { rm -f "$tmp"; return 0; }
   _ds_voice_spawn "$DS_VOICE_LIB_DIR/timer.sh" "$sid" "$eid"
+}
+
+# Remember which session this Claude Code window runs, for speech started from a
+# command (/devscope:voice explain), which is told no session id. Only when it
+# is cheap (Claude Code gave its PID) or voice is set up, so a plugin user who
+# never uses voice pays no process lookups.
+_ds_voice_note_session() {  # hook-input
+  local sid pid f
+  [ -n "${CLAUDE_PID:-}" ] || [ -f "$DS_VOICE_CONFIG" ] || return 0
+  sid=$(printf '%s' "$1" | jq -r '.session_id // empty' 2>/dev/null)
+  [ -n "$sid" ] || return 0
+  pid=$(_ds_voice_claude_pid)
+  [ -n "$pid" ] || return 0
+  _ds_voice_mkdirs
+  f="$DS_VOICE_DIR/sessions/$pid"
+  [ "$(cat "$f" 2>/dev/null)" = "$sid" ] && return 0
+  find "$DS_VOICE_DIR/sessions" -type f -mtime +2 -delete 2>/dev/null || true
+  ( umask 077; printf '%s' "$sid" > "$f" ) 2>/dev/null || true
+}
+
+# The session id of the Claude Code window this command runs in, if known.
+_ds_voice_this_session() {
+  local pid
+  pid=$(_ds_voice_claude_pid)
+  [ -n "$pid" ] && cat "$DS_VOICE_DIR/sessions/$pid" 2>/dev/null
+  return 0
 }
 
 # Start a process that outlives the hook (Claude Code may reap the hook's group).
@@ -962,10 +993,12 @@ _ds_voice_progress() {  # phase [piece pieces [piece-ms]]
   [ -n "${DS_VOICE_PROGRESS_KIND:-}" ] || return 0
   local tmp="$DS_VOICE_PROGRESS.tmp.$$"
   jq -n --arg kind "$DS_VOICE_PROGRESS_KIND" --arg project "${DS_VOICE_PROGRESS_PROJECT:-}" \
+    --arg session "${DS_VOICE_PROGRESS_SESSION:-}" \
     --arg phase "$1" --argjson piece "${2:-0}" --argjson pieces "${3:-0}" --argjson ms "${4:-0}" \
     --argjson at "$(( $(_ds_now_ns) / 1000000 ))" --argjson pid "$$" \
     '{kind: $kind, project: $project, phase: $phase, piece: $piece, pieces: $pieces,
-      pieceMs: $ms, at: $at, pid: $pid}' > "$tmp" 2>/dev/null && mv "$tmp" "$DS_VOICE_PROGRESS" || rm -f "$tmp"
+      pieceMs: $ms, at: $at, pid: $pid}
+     + (if $session == "" then {} else {sessionId: $session} end)' > "$tmp" 2>/dev/null && mv "$tmp" "$DS_VOICE_PROGRESS" || rm -f "$tmp"
 }
 
 # Remove the progress file if this process wrote it.

@@ -420,6 +420,28 @@ describe('voice progress bar', () => {
     await ui.unmount()
   })
 
+  test('shows the bar only in the speaking session; other windows get a dimmed line', async ($, on) => {
+    const files: Files = {}
+    const { clock } = setup(on, {}, files)
+    await $.session.start(SESSION)
+    const own = 'cc-session-1' // the test engine's session id
+
+    files[PROGRESS] = progress(clock.now(), { sessionId: own })
+    await clock.advance(1000)
+    let ui = await $.ui.mount({ ...ABOVE_PROMPT, surface: 'terminal' })
+    expect(await ui.find({ key: 'voice-stop' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^🔊/ })).toBeUndefined()
+    await ui.unmount()
+
+    files[PROGRESS] = progress(clock.now(), { sessionId: 'some-other-session', kind: 'reply', project: 'api, rate limiter fix' })
+    await clock.advance(1000)
+    ui = await $.ui.mount({ ...ABOVE_PROMPT, surface: 'terminal' })
+    expect(await ui.find({ type: 'Text', text: '🔊 api, rate limiter fix · reading the summary 2/4' })).toBeDefined()
+    expect(await ui.find({ key: 'voice-stop' })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /\u283f/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
   test('animates while the audio is made, and goes away when the speaker is done', async ($, on) => {
     const files: Files = {}
     const { clock } = setup(on, {}, files)

@@ -272,7 +272,10 @@ claude plugin disable devscope@devscope                  # Disable
 - **`progress.json`** is the contract with the devscope-live mod's voice bar: the speak lock
   holder (`speak.sh`, `DS_VOICE_PROGRESS_KIND` set) writes `{kind, project, phase:
   summarizing|voicing|speaking, piece, pieces, pieceMs, at (epoch ms), pid}` atomically per
-  phase and piece (`pieceMs` from the WAV header, 0 when unknown) and removes it on exit.
+  phase and piece (`pieceMs` from the WAV header, 0 when unknown) and removes it on exit. `sessionId`
+  (Claude Code's id; replies from the job, explanations via `sessions/<claude-pid>`, written by the prompt hook)
+  makes the bar per session: the mod draws it only where `$.session.id()` matches, a dimmed one-liner elsewhere,
+  and the whole bar everywhere when the field is absent (older plugins).
   The mod parses it in `hooks/voiceBar.ts` and treats a file past its piece's end + 15 s as
   dead; change both sides together.
 
