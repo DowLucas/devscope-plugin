@@ -495,6 +495,85 @@ for p in alpha beta gamma; do DEVSCOPE_PRIVACY=private hook permission-request.s
 wait_spoken 1 10; sleep 1
 [ "$(spoken)" = "three sessions need you: oauth login in alpha, rate limit in beta and gamma." ] && ok "labels: batch names topic in project" || bad "label batch" "$(spoken)"
 
+# 16. Several sessions finishing at once: every reply is spoken, one at a time,
+# first come first served (speech takes 1.5 s each here).
+TL="$TMP/timeline"
+queue_case() {  # label [env...]
+  local label="$1"; shift
+  reset; rm -f "$TL"; "$S/voice/cli.sh" auto-default on >/dev/null
+  respond '{"text": "summary"}'
+  for n in 1 2 3 4; do
+    respond "{\"text\": \"session $n done.\"}"
+    env "$@" DS_VOICE_TIMELINE="$TL" DS_VOICE_TEST_SPEAK_SEC=1.5 \
+      bash -c 'jq -n --arg s "q'"$n"'" "{session_id: \$s, cwd: \"/work/p'"$n"'\", hook_event_name: \"Stop\", last_assistant_message: \"Done.\"}" | "$0/response-stop.sh" >/dev/null 2>&1' "$S"
+    sleep 0.3
+  done
+  wait_spoken 4 20
+  local starts ends overlap order
+  starts=$(grep -c "^start" "$TL" 2>/dev/null || true); ends=$(grep -c "^end" "$TL" 2>/dev/null || true)
+  # No speech starts before the previous one ended.
+  overlap=$(awk '$1 == "start" { if (busy) bad = 1; busy = 1 } $1 == "end" { busy = 0 } END { print bad + 0 }' "$TL" 2>/dev/null || true)
+  order=$(grep "^start" "$TL" 2>/dev/null | grep -o "session [0-9]" | tr -d "session " | tr -d "\n" || true)
+  [ "$starts" = 4 ] && [ "$ends" = 4 ] && ok "queue ($label): all four replies spoken" || bad "queue $label count" "$(cat "$TL")"
+  [ "$overlap" = 0 ] && ok "queue ($label): never two voices at once" || bad "queue $label overlap" "$(cat "$TL")"
+  [ "$order" = 1234 ] && ok "queue ($label): spoken in the order the sessions finished" || bad "queue $label order" "$order"
+  "$S/voice/cli.sh" auto-default off >/dev/null
+}
+queue_case flock
+queue_case "macOS lock" DS_VOICE_NO_FLOCK=1
+
+# A ticket left by a process that died does not block the queue.
+reset; Q="$HOME/.cache/devscope/voice/queue"; mkdir -p "$Q"
+sleep 0.01 & deadpid=$!; wait "$deadpid"
+: > "$Q/0000000000000000001-$deadpid"
+out=$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; DS_VOICE_QUEUE_MAX_WAIT=5; _ds_voice_with_lock echo ran )
+[ "$out" = ran ] && [ ! -e "$Q/0000000000000000001-$deadpid" ] && ok "queue: a dead process's ticket is skipped and removed" || bad "dead ticket" "$out $(ls "$Q")"
+
+# macOS lock: a live holder is waited for however long it speaks; a dead one is taken over.
+LD="$HOME/.cache/devscope/voice/speak.lock.d"
+sleep 3 & holder=$!
+rm -rf "$LD"; mkdir -p "$LD"; printf '%s' "$holder" > "$LD/pid"; touch -d '10 minutes ago' "$LD" 2>/dev/null || true
+t0=$(date +%s)
+out=$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; DS_VOICE_NO_FLOCK=1; _ds_voice_with_lock echo ran )
+waited=$(( $(date +%s) - t0 ))
+[ "$out" = ran ] && [ "$waited" -ge 2 ] && ok "macOS lock: an old but live holder is not talked over" || bad "mkdir live" "out=$out waited=${waited}s"
+rm -rf "$LD"; mkdir -p "$LD"; printf '%s' "$deadpid" > "$LD/pid"
+out=$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; DS_VOICE_NO_FLOCK=1; _ds_voice_with_lock echo ran )
+[ "$out" = ran ] && ok "macOS lock: a dead holder's lock is taken over" || bad "mkdir dead" "$out"
+rm -rf "$LD"
+
+# 17. Endings. A fake curl logs each request and plays back a status.
+FAKE="$TMP/fakebin"; mkdir -p "$FAKE"
+cat > "$FAKE/curl" <<'EOF'
+#!/usr/bin/env bash
+out=""; body=""
+while [ $# -gt 0 ]; do
+  case "$1" in -o) out="$2"; shift ;; -d) body="$2"; shift ;; esac; shift
+done
+printf '%s\n' "$body" >> "$FAKE_CURL_LOG"
+[ -n "$out" ] && printf 'RIFFxxxxWAVE' > "$out"
+printf '200 audio/wav'
+exit "${FAKE_CURL_EXIT:-0}"
+EOF
+chmod +x "$FAKE/curl"
+fetch() { ( export PATH="$FAKE:$PATH" FAKE_CURL_LOG="$TMP/curl.log" FAKE_CURL_EXIT="$1"
+  . "$S/_helpers.sh"; . "$S/voice/lib.sh"; DS_VOICE_SERVER_RETRY_DELAY=0
+  _ds_voice_server_fetch "hello" standard "$TMP/out.wav" 1 ); }
+rm -f "$TMP/curl.log"
+fetch 0 && ok "endings: a complete download plays" || bad "fetch ok" "$(cat "$TMP/curl.log")"
+fetch 28 && bad "endings: partial download" "a 200 cut short by a timeout was accepted" || ok "endings: a 200 cut short (curl timeout) is not played"
+
+# Long speech: only the last piece is padded with silence.
+rm -f "$TMP/curl.log"
+( export PATH="$FAKE:$PATH" FAKE_CURL_LOG="$TMP/curl.log"; unset DS_VOICE_SPEAK_LOG
+  . "$S/_helpers.sh"; . "$S/voice/lib.sh"
+  _ds_voice_play() { :; }
+  _ds_voice_speak_long "$LONG" standard )
+pieces=$(grep -c . "$TMP/curl.log")
+pads=$(jq -r '.pad_ms // "default"' "$TMP/curl.log" | tr '\n' ' ')
+expected="$(printf '0 %.0s' $(seq 2 "$pieces"))default "
+[ "$pieces" -ge 2 ] && [ "$pads" = "$expected" ] && ok "endings: pieces run on, only the last gets trailing silence ($pieces pieces)" || bad "pad" "$pads"
+
 reset
 echo "---"; echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

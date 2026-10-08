@@ -31,18 +31,17 @@ case "${1:-}" in
     export DS_VOICE_PROGRESS_KIND=reply
     DS_VOICE_PROGRESS_PROJECT=$(jq -r '.project // ""' "$JOB" 2>/dev/null)
     export DS_VOICE_PROGRESS_PROJECT
+    # Summarized before waiting for a turn: sessions that finish together get
+    # their summaries in parallel instead of each waiting on the others' calls.
+    TEXT=$(_ds_voice_reply_text "$JOB") || exit 0
+    PRIVACY=$(jq -r '.privacy' "$JOB" 2>/dev/null)
     speak_reply() {
-      local text privacy
+      local text="$TEXT" privacy="$PRIVACY"
       # A newer reply from the same session replaces this one.
       current || return 0
       _ds_voice_muted && return 0
       # Locked while it waited its turn: skip, as when queued.
       _ds_voice_can_play || return 0
-      # Summarized under the lock, so the progress bar covers it too.
-      _ds_voice_progress summarizing
-      text=$(_ds_voice_reply_text "$JOB") || return 0
-      privacy=$(jq -r '.privacy' "$JOB" 2>/dev/null)
-      current || return 0
       _ds_voice_log "speak reply: $text"
       _ds_voice_speak_long "$text" "$privacy"
       current && rm -f "$JOB"
