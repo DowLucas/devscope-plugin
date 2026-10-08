@@ -13,6 +13,8 @@
 #                           time keeps the announcer silent.
 #   replies/<session>.json  the latest finished turn to summarize, per session.
 #   say/<id>.json           an explanation waiting to be spoken.
+#   labels/<session>        the session's spoken name from the server ("api-service,
+#                           rate limiter fix"), kept so a session keeps one name.
 #   spoke/<claude-pid>      this turn already spoke an explanation, so its
 #                           reply is not summarized on top of it.
 #   auto/<claude-pid>       "on" or "off": auto voice for that Claude Code
@@ -82,7 +84,84 @@ DS_VOICE_REPLY_TAIL=1100
 # State and log can hold summaries of the user's work: keep them owner-only.
 _ds_voice_mkdirs() {
   ( umask 077; mkdir -p "$DS_VOICE_PENDING" "$DS_VOICE_DIR/replies" "$DS_VOICE_DIR/say" \
-      "$DS_VOICE_DIR/spoke" "$DS_VOICE_DIR/speakers" "$DS_VOICE_DIR/auto" ) 2>/dev/null
+      "$DS_VOICE_DIR/spoke" "$DS_VOICE_DIR/speakers" "$DS_VOICE_DIR/auto" "$DS_VOICE_DIR/labels" ) 2>/dev/null
+}
+
+# --- Session labels ---
+# Every spoken text starts with the session's name, project plus what it is
+# working on, so several sessions can be told apart by ear. The server builds it
+# from the session's title or branch and returns it; it is kept per session and
+# sent back, so the name does not change when the title does. Private sessions
+# and server failures use the project plus the local branch instead.
+
+_ds_voice_label_file() { printf '%s/labels/%s' "$DS_VOICE_DIR" "$(printf '%s' "$1" | tr -cd 'A-Za-z0-9_-')"; }
+
+# The label the server gave this session, if any.
+_ds_voice_label() {  # session-id
+  [ -n "$1" ] || return 0
+  cat "$(_ds_voice_label_file "$1")" 2>/dev/null || true
+}
+
+# Keep the first label the server returns for a session. Labels of sessions
+# idle for two days are dropped on the way.
+_ds_voice_keep_label() {  # session-id label
+  local f
+  [ -n "$1" ] && [ -n "$2" ] || return 0
+  f=$(_ds_voice_label_file "$1")
+  [ -s "$f" ] && return 0
+  _ds_voice_mkdirs
+  find "$DS_VOICE_DIR/labels" -type f -mtime +2 -delete 2>/dev/null || true
+  ( umask 077; printf '%s' "$2" > "$f" ) 2>/dev/null || true
+}
+
+# A branch as spoken words, as the server says it: "feat/oauth-login" ->
+# "oauth login". Empty for main and other branches that say nothing.
+_ds_voice_branch_words() {  # branch
+  local last="${1##*/}"
+  case "$(printf '%s' "$last" | tr '[:upper:]' '[:lower:]')" in
+    ""|main|master|develop|dev|trunk|head|staging|production) return 0 ;;
+  esac
+  printf '%s' "$last" | tr -s '_.-' '   ' | awk '{ n = NF > 5 ? 5 : NF; for (i = 1; i <= n; i++) printf "%s%s", (i > 1 ? " " : ""), $i }'
+}
+
+# The current branch of a directory, read locally and never sent anywhere.
+_ds_voice_branch() {  # dir
+  [ -n "$1" ] || return 0
+  git -C "$1" symbolic-ref --quiet --short HEAD 2>/dev/null || true
+}
+
+# The name to speak for a job file: the server's label, else project plus
+# the local branch, else the project.
+_ds_voice_name() {  # job-file
+  local sid project branch words label
+  read -r sid < <(jq -r '.dsSessionId // .sessionId // ""' "$1" 2>/dev/null) || true
+  label=$(_ds_voice_label "$sid")
+  if [ -n "$label" ]; then printf '%s' "$label"; return 0; fi
+  project=$(jq -r '.project' "$1" 2>/dev/null)
+  branch=$(jq -r '.branch // ""' "$1" 2>/dev/null)
+  words=$(_ds_voice_branch_words "$branch")
+  printf '%s%s' "$project" "${words:+, $words}"
+}
+
+# A session in a "N sessions need you" list: "oauth login in web", as a list
+# of labels would run their commas together.
+_ds_voice_batch_name() {  # job-file
+  local name
+  name=$(_ds_voice_name "$1")
+  case "$name" in
+    *", "*) printf '%s in %s' "${name#*, }" "${name%%, *}" ;;
+    *) printf '%s' "$name" ;;
+  esac
+}
+
+# Ask the server for the text, keep the label it returns, print the text.
+_ds_voice_summary() {  # json-body session-id
+  local raw text label
+  raw=$(_ds_api POST /api/ai/voice-summary "$1" "$DS_VOICE_SUMMARY_TIMEOUT") || return 0
+  text=$(printf '%s' "$raw" | jq -r '.text // empty' 2>/dev/null)
+  label=$(printf '%s' "$raw" | jq -r '.label // empty' 2>/dev/null)
+  [ -n "$text" ] && _ds_voice_keep_label "$2" "$label"
+  printf '%s' "$text"
 }
 
 _ds_voice_log() {
@@ -312,7 +391,7 @@ _ds_voice_on_event() {
 # (/devscope:voice explain) is not summarized on top of it.
 _ds_voice_on_reply_event() {  # event-type hook-input
   _ds_voice_replies_on || return 0
-  local et="$1" input="$2" sid pid eid job tmp privacy="${DEVSCOPE_PRIVACY:-standard}" last=""
+  local et="$1" input="$2" sid pid eid job tmp cwd privacy="${DEVSCOPE_PRIVACY:-standard}" last=""
   case "$et" in
     prompt.submit)
       # A turn interrupted after it spoke never reached Stop: forget it.
@@ -342,9 +421,10 @@ _ds_voice_on_reply_event() {  # event-type hook-input
   _ds_voice_mkdirs
   job="$DS_VOICE_DIR/replies/$(printf '%s' "$sid" | tr -cd 'A-Za-z0-9_-').json"
   tmp="$job.tmp.$$"
-  jq -n --arg eid "$eid" --arg sid "$sid" --arg privacy "$privacy" --arg last "$last" \
-    --arg project "$(basename "$(printf '%s' "$input" | jq -r '.cwd // "session"' 2>/dev/null)")" \
-    '{eventId: $eid, sessionId: $sid, project: $project, lastMessage: $last, privacy: $privacy}' \
+  cwd=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null)
+  jq -n --arg eid "$eid" --arg sid "$sid" --arg dsid "${DS_VOICE_SESSION:-$sid}" --arg privacy "$privacy" --arg last "$last" \
+    --arg project "$(basename "${cwd:-session}")" --arg branch "$(_ds_voice_branch "$cwd")" \
+    '{eventId: $eid, sessionId: $sid, dsSessionId: $dsid, project: $project, branch: $branch, lastMessage: $last, privacy: $privacy}' \
     > "$tmp" && mv "$tmp" "$job" || { rm -f "$tmp"; return 0; }
   _ds_voice_spawn "$DS_VOICE_LIB_DIR/speak.sh" reply "$sid" "$eid"
 }
@@ -352,18 +432,19 @@ _ds_voice_on_reply_event() {  # event-type hook-input
 # The text for a queued reply: an AI summary, or the template when the session
 # is private, the reply was empty or the server fails.
 _ds_voice_reply_text() {  # job-file
-  local body text="" project privacy
+  local body text="" privacy sid
   read -r privacy < <(jq -r '.privacy' "$1" 2>/dev/null) || return 1
-  project=$(jq -r '.project' "$1" 2>/dev/null)
+  sid=$(jq -r '.dsSessionId // .sessionId // ""' "$1" 2>/dev/null)
   if [ "$privacy" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ]; then
-    body=$(jq -c --arg length "$(_ds_voice_verbosity auto)" \
-      '{trigger: "reply", project: .project, last_message: .lastMessage, length: $length}
-       | with_entries(select(.value != ""))' "$1" 2>/dev/null)
+    body=$(jq -c --arg length "$(_ds_voice_verbosity auto)" --arg label "$(_ds_voice_label "$sid")" \
+      '{trigger: "reply", project: .project, last_message: .lastMessage, length: $length,
+        session_id: (.dsSessionId // .sessionId), label: $label}
+       | with_entries(select(.value != "" and .value != null))' "$1" 2>/dev/null)
     if printf '%s' "$body" | jq -e '.last_message' >/dev/null 2>&1; then
-      text=$(_ds_api POST /api/ai/voice-summary "$body" "$DS_VOICE_SUMMARY_TIMEOUT" | jq -r '.text // empty' 2>/dev/null)
+      text=$(_ds_voice_summary "$body" "$sid")
     fi
   fi
-  [ -n "$text" ] || text=$(_ds_voice_template finished "$project")
+  [ -n "$text" ] || text=$(_ds_voice_template finished "$(_ds_voice_name "$1")")
   printf '%s' "$text"
 }
 
@@ -483,13 +564,13 @@ _ds_voice_arm() {  # session-id type hook-input
   _ds_voice_mkdirs
   tmp="$m.tmp.$$"
   jq -n \
-    --arg eid "$eid" --arg sid "$sid" --arg type "$type" --arg tool "$tool" \
-    --arg project "$(basename "${cwd:-session}")" \
+    --arg eid "$eid" --arg sid "$sid" --arg dsid "${DS_VOICE_SESSION:-$sid}" --arg type "$type" --arg tool "$tool" \
+    --arg project "$(basename "${cwd:-session}")" --arg branch "$(_ds_voice_branch "$cwd")" \
     --arg detail "$(_ds_voice_detail "$type" "$tool" "$input")" \
     --arg last "$last" --arg privacy "${DEVSCOPE_PRIVACY:-standard}" \
     --arg pid "$pid" --arg match "$match" \
     --argjson now "$(date +%s)" \
-    '{eventId: $eid, sessionId: $sid, type: $type, tool: $tool, project: $project,
+    '{eventId: $eid, sessionId: $sid, dsSessionId: $dsid, type: $type, tool: $tool, project: $project, branch: $branch,
       detail: $detail, lastMessage: $last, privacy: $privacy, armedAt: $now, spoken: 0,
       claudePid: $pid, match: $match}' \
     > "$tmp" && mv "$tmp" "$m" || { rm -f "$tmp"; return 0; }
@@ -528,28 +609,33 @@ _ds_voice_due() {  # marker-file now
 
 # --- Announcing ---
 
-_ds_voice_template() {  # type project tool
+_ds_voice_template() {  # type name tool
+  # A name with a topic ("api-service, oauth login") is said first, on its own.
+  local who="$2"
+  case "$2" in *", "*) printf '%s. ' "$2"; who="It" ;; esac
   case "$1" in
-    permission) printf '%s needs permission%s.' "$2" "${3:+ to use $3}" ;;
-    question) printf '%s has a question for you.' "$2" ;;
-    failed) printf '%s stopped with an error.' "$2" ;;
-    *) printf '%s is done and waiting for you.' "$2" ;;
+    permission) printf '%s needs permission%s.' "$who" "${3:+ to use $3}" ;;
+    question) printf '%s has a question for you.' "$who" ;;
+    failed) printf '%s stopped with an error.' "$who" ;;
+    *) printf '%s is done and waiting for you.' "$who" ;;
   esac
 }
 
 # The sentence for one marker: an AI summary unless the session is private or
 # the backend is unreachable, then the local template.
 _ds_voice_text() {
-  local f="$1" type project tool privacy spoken body text=""
+  local f="$1" type tool privacy spoken body text="" sid
   read -r type privacy spoken < <(jq -r '"\(.type) \(.privacy) \(.spoken)"' "$f" 2>/dev/null) || return 1
-  project=$(jq -r '.project' "$f" 2>/dev/null)
   tool=$(jq -r '.tool' "$f" 2>/dev/null)
+  sid=$(jq -r '.dsSessionId // .sessionId // ""' "$f" 2>/dev/null)
   if [ "$privacy" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ]; then
-    body=$(jq -c '{trigger: .type, project: .project, tool: .tool, detail: .detail, last_message: .lastMessage}
-                  | with_entries(select(.value != ""))' "$f" 2>/dev/null)
-    text=$(_ds_api POST /api/ai/voice-summary "$body" "$DS_VOICE_SUMMARY_TIMEOUT" | jq -r '.text // empty' 2>/dev/null)
+    body=$(jq -c --arg label "$(_ds_voice_label "$sid")" \
+      '{trigger: .type, project: .project, tool: .tool, detail: .detail, last_message: .lastMessage,
+        session_id: (.dsSessionId // .sessionId), label: $label}
+       | with_entries(select(.value != "" and .value != null))' "$f" 2>/dev/null)
+    text=$(_ds_voice_summary "$body" "$sid")
   fi
-  [ -n "$text" ] || text=$(_ds_voice_template "$type" "$project" "$tool")
+  [ -n "$text" ] || text=$(_ds_voice_template "$type" "$(_ds_voice_name "$f")" "$tool")
   [ "$spoken" -gt 0 ] 2>/dev/null && text="Still waiting. $text"
   printf '%s' "$text"
 }
@@ -596,7 +682,7 @@ _ds_voice_announce_due() {
   if [ $((n + ${#soon[@]})) -ge "$DS_VOICE_BATCH_MIN" ]; then
     for i in "${!soon[@]}"; do files+=("${soon[$i]}"); eids+=("${soon_eids[$i]}"); done
     n=${#files[@]}
-    names=$(for f in "${files[@]}"; do jq -r '.project' "$f"; done | awk '
+    names=$(for f in "${files[@]}"; do _ds_voice_batch_name "$f"; echo; done | awk '
       { a[NR] = $0 } END { for (i = 1; i <= NR; i++) printf "%s%s", (i == 1 ? "" : (i == NR ? " and " : ", ")), a[i] }')
     text="$(_ds_voice_count_word "$n") sessions need you: $names."
     # It names every project, so it is private if any of them is.

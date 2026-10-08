@@ -204,11 +204,12 @@ feature can be turned off in `/config` under the plugin's options. The
 
 Running several sessions, or working in another window? `/devscope:voice on` makes DevScope tell you out loud when a session has been waiting on you for a while:
 
-> "devscope-cloud wants to run the database migration and is waiting for your approval."
+> "devscope-cloud, rate limiter fix. It wants to run the database migration and is waiting for your approval."
 
 - **Only when you've lost track.** It speaks after a grace delay (30 s for permission prompts and questions, 10 s for failed turns). Answer in time and it stays silent. If you don't, it reminds you every 5 minutes, up to 3 times.
-- **Across all sessions.** Announcements play one at a time, and three or more at once become one sentence ("three sessions need you: ...").
-- **Summaries follow your privacy mode.** Sentences are written by DevScope's AI from what your privacy mode already sends. `private` sessions never leave your machine and use a local template.
+- **Says which session.** Every announcement and reply summary starts with the session's name: the project plus what it is working on, from the session's title or its git branch ("devscope-cloud, rate limiter fix"). A session keeps the same name for its whole life, so with several running you know which one is talking.
+- **Across all sessions.** Announcements play one at a time, and three or more at once become one sentence ("three sessions need you: rate limiter fix in devscope-cloud, oauth login in web and docs").
+- **Summaries follow your privacy mode.** Sentences are written by DevScope's AI from what your privacy mode already sends. `private` sessions never leave your machine and use a local template, named from the local git branch.
 - **Natural voice, nothing to install.** Speech is voiced by your DevScope server. Which voices it offers is up to the server; the homelab offers **Chatterbox Turbo** (the default, on its GPU) and **Kokoro** (on its CPU, also the fallback when the GPU is busy). `/devscope:voice model` lists them, `/devscope:voice model kokoro` picks one for you, `model default` goes back to the server's choice.
 - **Local mode, for Macs.** `/devscope:voice model local` speaks with this computer's own voice instead (`say` on macOS), with no audio from the server. It uses your System voice, so to hear a Siri voice pick one in System Settings → Accessibility → Spoken Content → System voice. The DevScope server still writes the auto voice summaries; only the voice is local. `model chatterbox` (or another server voice) switches back. Speed with `/devscope:voice speed`, volume with `volume` in `voice.json` (how loud the server makes the speech) and `playback_volume` (how loud this computer plays it, without turning up its other sounds). `private` sessions, and any time the server can't be reached, use a local voice instead: [Piper](https://github.com/rhasspy/piper) if you ran `/devscope:voice setup` (Linux; `pipx install piper-tts` on macOS), otherwise the system voice (`say`, `spd-say`, `espeak`).
 

@@ -219,6 +219,13 @@ claude plugin disable devscope@devscope                  # Disable
   no voice or is unreachable it falls back to Piper if installed (`/devscope:voice setup`),
   else `say`/`spd-say`/`espeak`. What is sent follows the
   privacy mode: `standard` sends no more than its events do. Tests: `tests/voice/run.sh`.
+- **Session labels** (`labels/<session>`): every summary request sends `session_id` and, once known,
+  the session's `label`. The server answers with text that already starts with the label and returns
+  `label` ("project, topic" from the session title, else its branch); `_ds_voice_summary` keeps the
+  first one per session and it is sent back on later calls, so a session's spoken name never changes.
+  Fallback templates start with the kept label, else project + local branch (`_ds_voice_name`; the
+  branch is read with `git symbolic-ref` at arm time, stored in the job file, never sent), and the
+  batch sentence says "topic in project" (`_ds_voice_batch_name`) so labels' commas do not merge.
 - **Auto voice** (opt-in) is per Claude Code window: `/devscope:voice auto` writes `auto/<claude-pid>`
   (`on`/`off`; the PID comes from Claude Code's `CLAUDE_PID`, else a walk up the process tree, so it survives
   `/clear`), and windows without one follow `speak_replies` in voice.json (`/devscope:voice auto-default`).
