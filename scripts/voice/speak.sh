@@ -29,8 +29,10 @@ case "${1:-}" in
     current() { [ "$(jq -r '.eventId' "$JOB" 2>/dev/null)" = "$EID" ]; }
     current || exit 0
     export DS_VOICE_PROGRESS_KIND=reply
-    DS_VOICE_PROGRESS_PROJECT=$(jq -r '.project // ""' "$JOB" 2>/dev/null)
-    export DS_VOICE_PROGRESS_PROJECT
+    # The session's spoken name, and its id so only its window shows the bar.
+    DS_VOICE_PROGRESS_PROJECT=$(_ds_voice_name "$JOB")
+    DS_VOICE_PROGRESS_SESSION=$(jq -r '.sessionId // ""' "$JOB" 2>/dev/null)
+    export DS_VOICE_PROGRESS_PROJECT DS_VOICE_PROGRESS_SESSION
     # Summarized before waiting for a turn: sessions that finish together get
     # their summaries in parallel instead of each waiting on the others' calls.
     TEXT=$(_ds_voice_reply_text "$JOB") || exit 0
@@ -53,7 +55,8 @@ case "${1:-}" in
     [ -f "$JOB" ] || exit 0
     export DS_VOICE_PROGRESS_KIND=explain
     DS_VOICE_PROGRESS_PROJECT=$(jq -r '.project // ""' "$JOB" 2>/dev/null)
-    export DS_VOICE_PROGRESS_PROJECT
+    DS_VOICE_PROGRESS_SESSION=$(jq -r '.sessionId // ""' "$JOB" 2>/dev/null)
+    export DS_VOICE_PROGRESS_PROJECT DS_VOICE_PROGRESS_SESSION
     speak_job() {
       _ds_voice_log "speak explanation ($(jq -r '.text | length' "$JOB" 2>/dev/null) chars)"
       _ds_voice_speak_long "$(jq -r '.text' "$JOB" 2>/dev/null)" "$(jq -r '.privacy' "$JOB" 2>/dev/null)"

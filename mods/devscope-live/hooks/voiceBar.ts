@@ -36,6 +36,7 @@ export function parseProgress(text: string): VoiceProgress | undefined {
       pieceMs: p.pieceMs as number,
       at: p.at as number,
       pid: p.pid as number,
+      sessionId: typeof p.sessionId === 'string' ? p.sessionId.slice(0, 200) : '',
     }
   } catch {
     return undefined
@@ -105,4 +106,17 @@ export function voiceLabel(p: VoiceProgress): string {
     p.phase === 'summarizing' ? 'summarizing the reply' : p.phase === 'voicing' ? 'creating audio' : p.kind === 'explain' ? 'explaining' : 'reading the summary'
   const part = p.phase === 'speaking' && p.pieces > 1 ? ` ${Math.min(p.piece + 1, p.pieces)}/${p.pieces}` : ''
   return `${p.project ? `${p.project} · ` : ''}${what}${part}`
+}
+
+/**
+ * Whether this window's session is the one speaking. Progress from an older
+ * plugin names no session and counts as everyone's, as it always did.
+ */
+export function isOwnSpeech(p: VoiceProgress, sessionId: string): boolean {
+  return p.sessionId === '' || p.sessionId === sessionId
+}
+
+/** The dimmed line other windows show while a session speaks. */
+export function otherSpeechLabel(p: VoiceProgress): string {
+  return `🔊 ${voiceLabel({ ...p, project: p.project || 'Another session' })}`
 }

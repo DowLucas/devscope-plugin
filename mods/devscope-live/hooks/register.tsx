@@ -11,7 +11,7 @@ import type { Suggestion } from './suggestions'
 import { USE_IT, matchSkill, skillContext, skillLabel } from './teamSkills'
 import type { TeamSkill } from './teamSkills'
 import { isPrUrl, linkFromBash, parseGhPr, withTrailer, withoutCredentials } from './vcs'
-import { barCells, fraction, isStale, parseProgress, runs, voiceLabel } from './voiceBar'
+import { barCells, fraction, isOwnSpeech, isStale, otherSpeechLabel, parseProgress, runs, voiceLabel } from './voiceBar'
 
 const band = atom({ plugin: 'devscope-live', key: 'band' } as const, null as Band)
 const voice = atom({ plugin: 'devscope-live', key: 'voice' } as const, null as VoiceView)
@@ -395,7 +395,14 @@ export const register: Register = (on, pluginOptions) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const clear = () => update($, band, () => null)
 
-    const voiceRow = speaking ? (
+    // The bar (and its Stop) belongs to the window whose session is speaking;
+    // every other window gets one dimmed line naming the session.
+    const own = speaking ? isOwnSpeech(speaking.progress, await $.session.id()) : false
+    const voiceRow = speaking && !own ? (
+      <Box key="voice">
+        <Text dimColor>{otherSpeechLabel(speaking.progress)}</Text>
+      </Box>
+    ) : speaking ? (
       <Box key="voice" gap={1}>
         <Box>
           {runs(barCells(fraction(speaking.progress, await $.clock.now()), speaking.frame)).map((run, i) => (

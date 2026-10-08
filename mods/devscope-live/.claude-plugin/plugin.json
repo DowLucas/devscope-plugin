@@ -1,6 +1,6 @@
 {
   "name": "devscope-live",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "DevScope in the live session: team prompt suggestions, team skills, a stuck band, outcome labels and session-to-commit links",
   "author": {
     "name": "Lucas Dow",

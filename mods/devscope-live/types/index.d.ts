@@ -10,7 +10,8 @@ export type Band =
 /**
  * What the Bash plugin's speaker is doing (~/.cache/devscope/voice/progress.json):
  * `at` is when the phase or piece began (epoch ms), `pieceMs` how long the piece
- * plays (0 when unknown), `pid` the speaker's process group.
+ * plays (0 when unknown), `pid` the speaker's process group. `sessionId` is the
+ * Claude Code session the speech is about ('' from older plugins: shown everywhere).
  */
 export type VoiceProgress = {
   kind: 'explain' | 'reply'
@@ -21,6 +22,7 @@ export type VoiceProgress = {
   pieceMs: number
   at: number
   pid: number
+  sessionId: string
 }
 
 /** The voice bar: the latest progress, and a frame counter that animates it. */
