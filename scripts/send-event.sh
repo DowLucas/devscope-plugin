@@ -16,11 +16,6 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 PROJECT_NAME=$(basename "$CWD" 2>/dev/null || echo "unknown")
 
-# Voice announcer: arm or clear this session's "needs you" marker before the
-# network round trip, so it never waits on the backend. No-op unless enabled.
-# shellcheck disable=SC1091
-{ . "$SCRIPT_DIR/voice/lib.sh" && _ds_voice_on_event "$EVENT_TYPE" "$INPUT"; } 2>/dev/null || true
-
 # Session continuity: use DevScope session ID if available
 # PPID identifies the Claude Code process, keeping concurrent sessions separate
 if [ -n "$CWD" ]; then
@@ -35,6 +30,13 @@ if [ -n "$CWD" ]; then
     [ -n "$_GC_SID" ] && SESSION_ID="$_GC_SID"
   fi
 fi
+
+# Voice announcer: arm or clear this session's "needs you" marker before the
+# network round trip, so it never waits on the backend. No-op unless enabled.
+# Placed after the lookup above so voice names the session by its DevScope id,
+# which outlives /clear and resume (Claude Code's own id does not).
+# shellcheck disable=SC1091
+{ DS_VOICE_SESSION="$SESSION_ID"; . "$SCRIPT_DIR/voice/lib.sh" && _ds_voice_on_event "$EVENT_TYPE" "$INPUT"; } 2>/dev/null || true
 
 DEV_NAME=$(git -C "$CWD" config user.name 2>/dev/null || echo "$USER")
 DEV_EMAIL=$(git -C "$CWD" config user.email 2>/dev/null || echo "${USER}@local")

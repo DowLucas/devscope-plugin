@@ -446,6 +446,55 @@ jq '.speed = 9' "$CONF" > "$TMP/c" && mv "$TMP/c" "$CONF"
 [ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_speed)" = 2 ] && ok "a hand-edited speed is clamped to 2x" || bad "clamp" ""
 printf '  \n' | "$S/voice/cli.sh" say >/dev/null && bad "empty say" "accepted" || ok "say rejects empty text"
 
+# 15. Session labels: every text starts with which session it is about.
+LABELS="$HOME/.cache/devscope/voice/labels"
+SA=/api/ai/voice-summary
+configure; reset; rm -rf "$LABELS"
+respond '{"text": "api, rate limiter fix. It wants to run the migration.", "label": "api, rate limiter fix"}'
+hook permission-request.sh lab1 /work/api "$PERM"
+wait_spoken 1 5 && [ "$(spoken)" = "api, rate limiter fix. It wants to run the migration." ] && ok "labels: the server's labelled text is spoken" || bad "label spoken" "$(spoken)"
+[ "$(last_at $SA .body.session_id)" = lab1 ] && ok "labels: sends the session id" || bad "label sid" "$(last_at $SA .body)"
+[ "$(last_at $SA .body.label)" = null ] && ok "labels: no label on the first call" || bad "label first" "$(last_at $SA .body)"
+[ "$(cat "$LABELS/lab1" 2>/dev/null)" = "api, rate limiter fix" ] && ok "labels: keeps the label it got back" || bad "label kept" "$(ls "$LABELS" 2>/dev/null)"
+
+reset; respond '{"text": "api, a newer title. Done.", "label": "api, a newer title"}'
+hook permission-request.sh lab1 /work/api "$PERM"
+wait_spoken 1 5; [ "$(last_at $SA .body.label)" = "api, rate limiter fix" ] && ok "labels: sends the kept label back" || bad "label resent" "$(last_at $SA .body)"
+[ "$(cat "$LABELS/lab1")" = "api, rate limiter fix" ] && ok "labels: the first label stays, so the name never changes" || bad "label stable" "$(cat "$LABELS/lab1")"
+
+configure; reset
+DEVSCOPE_URL=http://127.0.0.1:9 hook response-failed.sh lab1 /work/api '{hook_event_name: "StopFailure", error: "x"}'
+wait_spoken 1 8 && [ "$(spoken)" = "api, rate limiter fix. It stopped with an error." ] && ok "labels: server down, the template starts with the kept label" || bad "label template" "$(spoken)"
+
+# After /clear Claude Code starts a new session id, but DevScope keeps its own
+# (the session-state file send-event.sh reads); voice must name that one.
+configure; reset; rm -rf "$LABELS"; respond '{"text": "x", "label": "api, kept"}'
+STATE_EMAIL=$( . "$S/_helpers.sh"; _ds_normalize_email "${USER}@local")
+STATE="$HOME/.cache/devscope/$( . "$S/_helpers.sh"; _ds_sha256 "${STATE_EMAIL}:/work/api:$$").session"
+mkdir -p "$(dirname "$STATE")"; printf 'ds-session-1' > "$STATE"
+# Called directly, so its parent (part of the state file name) is this shell.
+jq -n '{session_id: "claude-new-id", cwd: "/work/api"} + '"$PERM" | "$S/send-event.sh" permission.request '{"toolName": "Bash"}' >/dev/null 2>&1
+wait_spoken 1 5; [ "$(last_at $SA .body.session_id)" = ds-session-1 ] && ok "labels: sends the DevScope session id, which outlives /clear" || bad "label dsid" "$(last_at $SA .body)"
+[ -f "$LABELS/ds-session-1" ] && ok "labels: the label is kept under the DevScope session" || bad "label dsid file" "$(ls "$LABELS")"
+rm -f "$STATE"
+
+# A private session is named from the local branch; nothing is sent.
+configure; reset
+REPO="$TMP/work/secret"; mkdir -p "$REPO"; git -C "$REPO" init -q -b feat/oauth-login 2>/dev/null || { git -C "$REPO" init -q; git -C "$REPO" checkout -q -b feat/oauth-login; }
+DEVSCOPE_PRIVACY=private hook permission-request.sh lab2 "$REPO" "$PERM"
+wait_spoken 1 5 && [ "$(spoken)" = "secret, oauth login. It needs permission to use Bash." ] && ok "labels: private session named from the local branch" || bad "label private" "$(spoken)"
+paths | grep -q voice-summary && bad "label private request" "$(paths | tr '\n' ' ')" || ok "labels: private branch never sent"
+git -C "$REPO" checkout -q -b main 2>/dev/null; reset
+DEVSCOPE_PRIVACY=private hook permission-request.sh lab3 "$REPO" "$PERM"
+wait_spoken 1 5 && [ "$(spoken)" = "secret needs permission to use Bash." ] && ok "labels: main says nothing, just the project" || bad "label main" "$(spoken)"
+
+# The batch sentence says "topic in project" so labels' commas do not run together.
+configure '.delays.permission = 3'; reset; rm -rf "$LABELS"; mkdir -p "$LABELS"
+printf 'alpha, oauth login' > "$LABELS/bl-alpha"; printf 'beta, rate limit' > "$LABELS/bl-beta"
+for p in alpha beta gamma; do DEVSCOPE_PRIVACY=private hook permission-request.sh "bl-$p" "/work/$p" "$PERM"; done
+wait_spoken 1 10; sleep 1
+[ "$(spoken)" = "three sessions need you: oauth login in alpha, rate limit in beta and gamma." ] && ok "labels: batch names topic in project" || bad "label batch" "$(spoken)"
+
 reset
 echo "---"; echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

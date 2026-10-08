@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.32.0] - 2026-10-08
+
+### Added
+- **Voice says which session it is talking about.** Announcements and auto
+  voice summaries start with the session's name, the project plus what it is
+  working on ("api-service, rate limiter fix"), so several sessions can be
+  told apart by ear. The plugin sends `session_id` to `/api/ai/voice-summary`;
+  the server names the session from its title, else its branch, and returns
+  the name as `label`. The first label is kept per session
+  (`~/.cache/devscope/voice/labels/`) and sent back, so a session keeps one
+  name even when its title changes. When the server is unreachable the local
+  sentence starts with the kept label; `private` sessions are named from the
+  local git branch, which is never sent. The "N sessions need you" sentence
+  names each as "rate limiter fix in api-service".
+- The voice hook now runs after `send-event.sh` resolves the DevScope session
+  id, so the id voice sends (and keys its labels by) is the one the session's
+  events are recorded under.
+- Needs a DevScope server with session labels for the server-built names;
+  older servers ignore the new fields and answer as before.
+
 ## [0.31.0] - 2026-10-07
 
 ### Added
