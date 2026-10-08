@@ -41,6 +41,7 @@ scripts/
   prompt-expansion.sh  # UserPromptExpansion hook
   response-failed.sh   # StopFailure hook
   model-switch.sh      # PostModelSwitch hook
+  model-first-use.sh   # SessionStart + PostModelSwitch (sync): first use of a model, asks Claude to offer a CLAUDE.md/memory review
   permission-denied.sh # PermissionDenied hook
   task-created.sh      # TaskCreated hook
   cwd-changed.sh       # CwdChanged hook
@@ -278,6 +279,20 @@ claude plugin disable devscope@devscope                  # Disable
   and the whole bar everywhere when the field is absent (older plugins).
   The mod parses it in `hooks/voiceBar.ts` and treats a file past its piece's end + 15 s as
   dead; change both sides together.
+
+## First use of a model
+
+`model-first-use.sh` runs synchronously (no `async`, `timeout: 5`) beside the async
+`session-start.sh` and `model-switch.sh`, because Claude Code ignores async output and
+this one must reach Claude as `additionalContext` (both events accept it). It keeps
+`~/.cache/devscope/models-seen` (ids lowercased, `[1m]`-style suffix dropped); with no
+file it seeds the model in use, or on a switch the model switched from, so existing
+users are not asked about the model they already run. On a new model it prints the
+`systemMessage` + `additionalContext` and sends `model.first_use` (`{model, trigger:
+session_start|model_switch, previousModel?}`) from a detached subshell with every
+stream closed, so a slow backend never delays the session. That also means smoke cannot
+see a delivery failure for it; the backend contract test covers the schema.
+`DEVSCOPE_HINTS=off` silences the message only. Tests: `tests/models/run.sh`.
 
 ## Token usage
 

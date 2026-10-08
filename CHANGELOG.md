@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.35.0] - 2026-10-08
+
+### Added
+- **First use of a model.** The first time a model shows up on this machine (at
+  session start or after `/model`), Claude is asked to offer, in one question,
+  to check your CLAUDE.md and memory files for instructions about model
+  selection and usage and update them for the new model; it does nothing
+  unless you agree. You see `DevScope: first time on <model>.` and a
+  `model.first_use` event (`model`, `trigger`, `previousModel`) is sent, which
+  the dashboard shows in the live feed. Seen models are kept in
+  `~/.cache/devscope/models-seen`; the context-window suffix (`[1m]`) does not
+  make a model new, and the model in use when the plugin first runs is the
+  silent baseline. New synchronous hook `scripts/model-first-use.sh` on
+  `SessionStart` and `PostModelSwitch`: local only, the event is sent in the
+  background. `DEVSCOPE_HINTS=off` turns the message off; the event is still
+  sent. Older servers reject the new event type with a 400 and the plugin
+  drops it, so nothing else is affected.
+
 ## [0.34.0] - 2026-10-08
 
 ### Added
