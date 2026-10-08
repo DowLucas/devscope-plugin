@@ -223,8 +223,9 @@ stop() {
     rm -f "$f"
   done
   rm -f "$DS_VOICE_DIR/say/"*.json "$DS_VOICE_DIR/replies/"*.json "$DS_VOICE_PROGRESS" 2>/dev/null
-  # macOS lock: a killed holder leaves its directory behind.
-  [ "$n" -gt 0 ] && rmdir "$DS_VOICE_DIR/speak.lock.d" 2>/dev/null
+  # macOS lock: a killed holder leaves its directory (with its pid) behind.
+  # Queue tickets of killed speakers are pruned by the next one to look.
+  [ "$n" -gt 0 ] && rm -rf "$DS_VOICE_DIR/speak.lock.d" 2>/dev/null
   echo "Stopped ($n speaking)."
 }
 

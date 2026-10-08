@@ -219,6 +219,16 @@ claude plugin disable devscope@devscope                  # Disable
   no voice or is unreachable it falls back to Piper if installed (`/devscope:voice setup`),
   else `say`/`spd-say`/`espeak`. What is sent follows the
   privacy mode: `standard` sends no more than its events do. Tests: `tests/voice/run.sh`.
+- **Speech queue** (`_ds_voice_with_lock`): every speaker (timer announcements, `speak.sh`
+  replies and explanations) writes `queue/<ns>-<pid>`; the oldest ticket whose pid is alive is
+  next, and the lock (flock, or on macOS a `speak.lock.d/pid` taken over only when that pid is
+  dead) makes overlap impossible. No fixed wait: a turn is dropped only after
+  `DS_VOICE_QUEUE_MAX_WAIT` (900 s) or when its process died. Reply summaries are fetched before
+  the turn (in `speak.sh`), not under it. Tests set `DS_VOICE_NO_FLOCK=1` to exercise the macOS
+  path, and `DS_VOICE_TEST_SPEAK_SEC` / `DS_VOICE_TIMELINE` to give fake speech a duration.
+- **Endings**: `_ds_voice_server_fetch` needs curl's exit status 0 as well as `200 audio/*` (a
+  timeout mid-body still reports 200). It passes `pad_ms` to voice-audio: `0` for every piece of
+  long speech but the last, so only the end carries the server's trailing silence.
 - **Session labels** (`labels/<session>`): every summary request sends `session_id` and, once known,
   the session's `label`. The server answers with text that already starts with the label and returns
   `label` ("project, topic" from the session title, else its branch); `_ds_voice_summary` keeps the

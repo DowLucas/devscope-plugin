@@ -23,6 +23,9 @@
 #   progress.json           what the speaking speak.sh is doing, for the
 #                           devscope-live mod's progress bar.
 #   speak.lock              serializes speech across all sessions.
+#   queue/<ns>-<pid>        one ticket per process waiting to speak; the oldest
+#                           live ticket speaks next, so speech is first come,
+#                           first served.
 #   voice.log               errors and announcements.
 
 DS_VOICE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,6 +47,9 @@ DS_VOICE_REMINDER_INTERVAL=300
 DS_VOICE_MAX_REMINDERS=3
 # Floor for reminder_interval, so a 0 cannot loop speech back to back.
 DS_VOICE_MIN_REMINDER_INTERVAL=5
+# How long a text may wait its turn to be spoken before it is dropped as stale.
+# Several sessions finishing together each speak in full, in order.
+DS_VOICE_QUEUE_MAX_WAIT="${DS_VOICE_QUEUE_MAX_WAIT:-900}"
 # Longest single sleep in timer.sh, so off/unmute/re-arm are noticed promptly.
 DS_VOICE_MAX_SLEEP=30
 # While the screen is locked, a due announcement is checked again this often,
@@ -84,7 +90,7 @@ DS_VOICE_REPLY_TAIL=1100
 # State and log can hold summaries of the user's work: keep them owner-only.
 _ds_voice_mkdirs() {
   ( umask 077; mkdir -p "$DS_VOICE_PENDING" "$DS_VOICE_DIR/replies" "$DS_VOICE_DIR/say" \
-      "$DS_VOICE_DIR/spoke" "$DS_VOICE_DIR/speakers" "$DS_VOICE_DIR/auto" "$DS_VOICE_DIR/labels" ) 2>/dev/null
+      "$DS_VOICE_DIR/spoke" "$DS_VOICE_DIR/speakers" "$DS_VOICE_DIR/auto" "$DS_VOICE_DIR/labels" "$DS_VOICE_DIR/queue" ) 2>/dev/null
 }
 
 # --- Session labels ---
@@ -708,26 +714,69 @@ _ds_voice_announce_due() {
 }
 
 # Run a command while holding the global speak lock.
+# Run a command when it is this process's turn to speak. Every speaker takes a
+# ticket; the oldest ticket whose process is alive goes next, and the lock
+# keeps two speakers from ever overlapping. Nothing waits on a fixed timeout:
+# a turn is skipped only when it waited DS_VOICE_QUEUE_MAX_WAIT (stale) or its
+# holder died, so sessions finishing at the same time are all heard, in order.
 _ds_voice_with_lock() {
-  local lock="$DS_VOICE_DIR/speak.lock" i=0
+  local q="$DS_VOICE_DIR/queue" lock="$DS_VOICE_DIR/speak.lock" ticket start
   _ds_voice_mkdirs
-  if command -v flock >/dev/null 2>&1; then
-    ( flock -w 120 9 || exit 0; "$@" ) 9>"$lock"
+  ticket="$q/$(_ds_now_ns)-$$"
+  ( umask 077; : > "$ticket" ) 2>/dev/null || return 0
+  start=$(date +%s)
+  while [ -e "$ticket" ]; do
+    if [ "$(_ds_voice_queue_head)" = "$ticket" ]; then
+      # DS_VOICE_NO_FLOCK (tests): take the macOS path on Linux too.
+      if [ -z "${DS_VOICE_NO_FLOCK:-}" ] && command -v flock >/dev/null 2>&1; then
+        # The ticket goes once the turn is over, so the next one waits for it.
+        ( flock -w 5 9 || exit 0; "$@"; rm -f "$ticket" ) 9>"$lock"
+      elif _ds_voice_mkdir_lock "$lock.d"; then
+        "$@"; rm -f "$ticket"
+        rm -rf "$lock.d"
+      fi
+    fi
+    [ -e "$ticket" ] || break
+    if [ $(( $(date +%s) - start )) -ge "$DS_VOICE_QUEUE_MAX_WAIT" ]; then
+      _ds_voice_log "waited ${DS_VOICE_QUEUE_MAX_WAIT}s to speak: dropped as stale"
+      rm -f "$ticket"
+      break
+    fi
+    sleep 0.2
+  done
+  return 0
+}
+
+# The oldest ticket whose process is still alive. Tickets of processes that
+# died (killed, crashed, closed laptop) are removed, so they never block.
+_ds_voice_queue_head() {
+  local t pid
+  for t in $(ls "$DS_VOICE_DIR/queue" 2>/dev/null | sort); do
+    pid=${t##*-}
+    if kill -0 "$pid" 2>/dev/null; then
+      printf '%s/queue/%s' "$DS_VOICE_DIR" "$t"
+      return 0
+    fi
+    rm -f "$DS_VOICE_DIR/queue/$t"
+  done
+}
+
+# macOS has no flock: mkdir is atomic. The holder writes its pid inside, and
+# the lock is taken over only when that process is gone, never because speech
+# ran long (an age rule let a waiter talk over a long explanation).
+_ds_voice_mkdir_lock() {  # lock-dir
+  local holder
+  if mkdir "$1" 2>/dev/null; then
+    printf '%s' "$$" > "$1/pid"
     return 0
   fi
-  # macOS has no flock: mkdir is atomic. A holder killed mid-speech leaves the
-  # directory behind, so one older than two minutes is taken over.
-  until mkdir "$lock.d" 2>/dev/null; do
+  holder=$(cat "$1/pid" 2>/dev/null)
+  if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } || \
+     { [ -z "$holder" ] && [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ]; }; then
     # Rename before removing: only one waiter can win the rename.
-    [ -n "$(find "$lock.d" -maxdepth 0 -mmin +2 2>/dev/null)" ] && \
-      mv "$lock.d" "$lock.d.stale.$$" 2>/dev/null && rmdir "$lock.d.stale.$$" 2>/dev/null
-    i=$((i + 1))
-    [ "$i" -gt 400 ] && return 0
-    sleep 0.3
-  done
-  "$@"
-  rmdir "$lock.d" 2>/dev/null
-  return 0
+    mv "$1" "$1.stale.$$" 2>/dev/null && rm -rf "$1.stale.$$"
+  fi
+  return 1
 }
 
 # --- Speech engines ---
@@ -747,8 +796,8 @@ _ds_voice_server() {  # text privacy
 
 # Fetch the server voice for a text (at most 440 characters) into a WAV file,
 # trying a passing failure again up to `attempts` times in all (default 2).
-_ds_voice_server_fetch() {  # text privacy out-file [attempts]
-  local body code cfg="" attempt=1 attempts="${4:-2}"
+_ds_voice_server_fetch() {  # text privacy out-file [attempts] [pad-ms]
+  local body code cfg="" attempt=1 attempts="${4:-2}" pad="${5:-}" rc
   [ "${2:-standard}" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ] || return 1
   # volume is only sent when set, so the server's default applies otherwise.
   # `model` picks the server's voice by name (/devscope:voice model); unset, the
@@ -756,16 +805,20 @@ _ds_voice_server_fetch() {  # text privacy out-file [attempts]
   body=$(jq -nc --arg t "$1" --arg v "$(_ds_voice_conf .voice "$DS_VOICE_SERVER_VOICE")" \
     --arg model "$(_ds_voice_conf .model "")" \
     --argjson s "$(_ds_voice_speed)" \
-    --arg vol "$(_ds_voice_conf .volume "")" \
+    --arg vol "$(_ds_voice_conf .volume "")" --arg pad "$pad" \
     '{text: $t, voice: $v, speed: $s} + (if $vol == "" then {} else {volume: ($vol | tonumber)} end)
-     + (if $model == "" then {} else {model: $model} end)' 2>/dev/null) || return 1
+     + (if $model == "" then {} else {model: $model} end)
+     + (if $pad == "" then {} else {pad_ms: ($pad | tonumber)} end)' 2>/dev/null) || return 1
   cfg="header = \"x-api-key: ${DEVSCOPE_API_KEY}\""
   while :; do
     code=$(printf '%s' "$cfg" | curl --config - -s -o "$3" -w '%{http_code} %{content_type}' \
       -X POST "${DEVSCOPE_URL}/api/ai/voice-audio" -H "x-requested-with: devscope-cli" \
       -H "Content-Type: application/json" -d "$body" --max-time "$DS_VOICE_SERVER_TIMEOUT" 2>/dev/null)
+    rc=$?
+    # The status arrives with the headers: a download cut short (curl timed out
+    # mid-body) still says 200 and would play with its ending missing.
     case "$code" in
-      "200 audio/"*) return 0 ;;
+      "200 audio/"*) [ "$rc" -eq 0 ] && return 0; code="000 partial (curl $rc)" ;;
     esac
     case "${code%% *}" in
       401|429|502|503|504|000|'') ;;
@@ -876,6 +929,9 @@ _ds_voice_speak() {  # text [privacy]
   engine=$(_ds_voice_conf .engine auto)
   [ "$engine" = "off" ] && return 0
   if [ -n "${DS_VOICE_SPEAK_LOG:-}" ]; then  # test hook
+    [ -n "${DS_VOICE_TIMELINE:-}" ] && printf 'start %s %s\n' "$(_ds_now_ns)" "$1" >> "$DS_VOICE_TIMELINE"
+    [ -n "${DS_VOICE_TEST_SPEAK_SEC:-}" ] && sleep "$DS_VOICE_TEST_SPEAK_SEC"
+    [ -n "${DS_VOICE_TIMELINE:-}" ] && printf 'end %s %s\n' "$(_ds_now_ns)" "$1" >> "$DS_VOICE_TIMELINE"
     printf '%s\n' "$1" >> "$DS_VOICE_SPEAK_LOG"
     [ -n "${DS_VOICE_PRIVACY_LOG:-}" ] && printf '%s\n' "$privacy" >> "$DS_VOICE_PRIVACY_LOG"
     return 0
@@ -1004,7 +1060,8 @@ _ds_voice_speak_long() {  # text [privacy]
   _ds_voice_can_play || { _ds_voice_log "screen locked: speech not started"; return 0; }
   dir=$(mktemp -d "${TMPDIR:-/tmp}/ds-voice.XXXXXX") || return 0
   _ds_voice_progress voicing 0 "$n"
-  if ! _ds_voice_server_fetch "${chunks[0]}" "$privacy" "$dir/0.wav"; then
+  # Only the last piece ends with padding; the others run straight on.
+  if ! _ds_voice_server_fetch "${chunks[0]}" "$privacy" "$dir/0.wav" 2 "$( [ "$n" -gt 1 ] && echo 0)"; then
     while [ "$i" -lt "$n" ]; do
       _ds_voice_can_play || { _ds_voice_log "screen locked: speech stopped"; break; }
       _ds_voice_progress speaking "$i" "$n"
@@ -1019,7 +1076,8 @@ _ds_voice_speak_long() {  # text [privacy]
     if [ $((i + 1)) -lt "$n" ]; then
       # Mid-speech, a switch to the local voice is jarring: try harder (this
       # runs while the current piece plays, so the wait is mostly hidden).
-      _ds_voice_server_fetch "${chunks[$((i + 1))]}" "$privacy" "$dir/$((i + 1)).wav" 4 &
+      _ds_voice_server_fetch "${chunks[$((i + 1))]}" "$privacy" "$dir/$((i + 1)).wav" 4 \
+        "$( [ $((i + 2)) -lt "$n" ] && echo 0)" &
       next=$!
     fi
     if ! _ds_voice_can_play; then

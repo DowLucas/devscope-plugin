@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.33.0] - 2026-10-08
+
+### Fixed
+- **Sessions finishing together are all heard, in order.** Speakers now take a
+  ticket and the oldest live one speaks next (first come, first served). Before,
+  a waiter gave up after 120 s, so with three or four sessions finishing at once
+  the later replies were silently dropped, and `flock` woke waiters in no
+  particular order. A turn is now skipped only after 15 minutes
+  (`DS_VOICE_QUEUE_MAX_WAIT`, stale) or when its process died.
+- **No more voices talking over a long explanation on macOS.** The `mkdir`
+  lock was taken over once it was two minutes old, which a three-minute
+  explanation reaches; it is now taken over only when its holder has exited.
+- **Reply summaries are fetched before waiting for a turn**, so sessions do
+  not wait on each other's summary requests as well as their speech. (The voice
+  bar therefore no longer shows a "summarizing" phase.)
+- **Endings cut off.** A clip whose download was cut short (curl timed out
+  after the `200` headers) was played with its end missing; it now counts as
+  failed and is fetched again. With a server that supports it, every voiced
+  text ends with trailing silence so outputs that close the stream early
+  (Bluetooth headphones) keep the last word; in long speech only the final
+  piece is padded, so pieces still run straight on (`pad_ms: 0`).
+- `/devscope:voice stop` removes the macOS lock directory, which now holds the
+  holder's pid.
+
 ## [0.32.0] - 2026-10-08
 
 ### Added
