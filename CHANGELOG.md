@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.35.1] - 2026-10-09
+
+### Changed
+- **Long speech runs up to about 5 minutes.** Explanations and reply summaries
+  were cut after 3000 characters (about 3 minutes at 1.2x), which could end
+  them mid-thought; the limit is now 5000 characters (`DS_VOICE_LONG_MAX`).
+
 ## [0.35.0] - 2026-10-08
 
 ### Added
