@@ -84,8 +84,8 @@ DS_VOICE_CHUNK_FIRST=200
 DS_VOICE_CHUNK_MAX=400
 # What one voice-audio request takes: text up to this length is never split.
 DS_VOICE_ONE_REQUEST=440
-# Longest text spoken at once (~3 minutes at 1.2x); the rest is cut.
-DS_VOICE_LONG_MAX=3000
+# Longest text spoken at once (~5 minutes at 1.2x); the rest is cut.
+DS_VOICE_LONG_MAX=5000
 # How much of Claude's reply is sent for a summary (the server takes 4000).
 DS_VOICE_REPLY_HEAD=2800
 DS_VOICE_REPLY_TAIL=1100

@@ -243,8 +243,8 @@ runon="Intro. $(for i in $(seq 1 60); do printf 'clause %s, ' "$i"; done)end."
 runon_pieces=$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$runon")
 [ "$(printf '%s\n' "$runon_pieces" | awk 'length > 400' | wc -l | tr -d ' ')" = 0 ] && \
   [ "$(printf '%s\n' "$runon_pieces" | sed -n '2,$p' | sed '$d' | grep -vc ',$')" = 0 ] && ok "a long sentence is split at commas" || bad "comma split" "$runon_pieces"
-huge=$(for i in $(seq 1 400); do printf 'word%s. ' "$i"; done)
-[ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$huge" | wc -c | tr -d ' ')" -le 3500 ] && ok "long text is cut near 3000 characters" || bad "cap" ""
+huge=$(for i in $(seq 1 800); do printf 'word%s. ' "$i"; done)
+[ "$( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_chunks "$huge" | wc -c | tr -d ' ')" -le 5500 ] && ok "long text is cut near 5000 characters" || bad "cap" ""
 
 # 10e. Progress for the devscope-live bar: phase per piece, with its length.
 python3 -c 'import wave,sys; w=wave.open(sys.argv[1],"wb"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000); w.writeframes(b"\0\0"*24000); w.close()' "$TMP/one-second.wav"
