@@ -12,6 +12,11 @@
 #                           that session deletes it, which is how answering in
 #                           time keeps the announcer silent.
 #   replies/<session>.json  the latest finished turn to summarize, per session.
+#   prompted/<session>      the developer started the current turn (a prompt);
+#                           a turn that ends without one was started by a
+#                           background event, which auto voice may skip.
+#   last/<session>          the reply summary last spoken for the session, so
+#                           the server can tell whether a new one says anything new.
 #   say/<id>.json           an explanation waiting to be spoken.
 #   labels/<session>        the session's spoken name from the server ("api-service,
 #                           rate limiter fix"), kept so a session keeps one name.
@@ -94,7 +99,7 @@ DS_VOICE_REPLY_TAIL=1100
 _ds_voice_mkdirs() {
   ( umask 077; mkdir -p "$DS_VOICE_PENDING" "$DS_VOICE_DIR/replies" "$DS_VOICE_DIR/say" \
       "$DS_VOICE_DIR/spoke" "$DS_VOICE_DIR/speakers" "$DS_VOICE_DIR/auto" "$DS_VOICE_DIR/labels" "$DS_VOICE_DIR/queue" \
-      "$DS_VOICE_DIR/sessions" ) 2>/dev/null
+      "$DS_VOICE_DIR/sessions" "$DS_VOICE_DIR/prompted" "$DS_VOICE_DIR/last" ) 2>/dev/null
 }
 
 # --- Session labels ---
@@ -165,13 +170,30 @@ _ds_voice_batch_name() {  # job-file
 }
 
 # Ask the server for the text, keep the label it returns, print the text.
+# Returns 2 when the server answered that a reply is not worth saying.
 _ds_voice_summary() {  # json-body session-id
   local raw text label
   raw=$(_ds_api POST /api/ai/voice-summary "$1" "$DS_VOICE_SUMMARY_TIMEOUT") || return 0
   text=$(printf '%s' "$raw" | jq -r '.text // empty' 2>/dev/null)
   label=$(printf '%s' "$raw" | jq -r '.label // empty' 2>/dev/null)
+  if [ -z "$text" ] && [ "$(printf '%s' "$raw" | jq -r '.skip // false' 2>/dev/null)" = true ]; then
+    _ds_voice_keep_label "$2" "$label"
+    return 2
+  fi
   [ -n "$text" ] && _ds_voice_keep_label "$2" "$label"
   printf '%s' "$text"
+}
+
+# A session id as a file name.
+_ds_voice_safe() { printf '%s' "$1" | tr -cd 'A-Za-z0-9_-'; }
+
+# The reply summary last spoken for a Claude Code session, and remembering one.
+_ds_voice_last_said() { [ -n "$1" ] && head -c 1000 "$DS_VOICE_DIR/last/$(_ds_voice_safe "$1")" 2>/dev/null; return 0; }
+_ds_voice_remember_said() {  # session-id text
+  [ -n "$1" ] || return 0
+  _ds_voice_mkdirs
+  ( umask 077; printf '%s' "$2" > "$DS_VOICE_DIR/last/$(_ds_voice_safe "$1")" ) 2>/dev/null || true
+  find "$DS_VOICE_DIR/last" "$DS_VOICE_DIR/prompted" -type f -mtime +2 -delete 2>/dev/null || true
 }
 
 _ds_voice_log() {
@@ -402,16 +424,29 @@ _ds_voice_on_event() {
 # (/devscope:voice explain) is not summarized on top of it.
 _ds_voice_on_reply_event() {  # event-type hook-input
   _ds_voice_replies_on || return 0
-  local et="$1" input="$2" sid pid eid job tmp cwd privacy="${DEVSCOPE_PRIVACY:-standard}" last=""
+  local et="$1" input="$2" sid pid eid job tmp cwd privacy="${DEVSCOPE_PRIVACY:-standard}" last="" background=true
   case "$et" in
-    prompt.submit)
-      # A turn interrupted after it spoke never reached Stop: forget it.
-      pid=$(_ds_voice_claude_pid)
-      [ -n "$pid" ] && rm -f "$DS_VOICE_DIR/spoke/$pid"
-      return 0 ;;
-    response.complete) ;;
+    prompt.submit|response.complete) ;;
     *) return 0 ;;
   esac
+  sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
+  if [ "$et" = prompt.submit ]; then
+    # A turn interrupted after it spoke never reached Stop: forget it.
+    pid=$(_ds_voice_claude_pid)
+    [ -n "$pid" ] && rm -f "$DS_VOICE_DIR/spoke/$pid"
+    # The developer started this turn; one that ends without a prompt came
+    # from a background event (a monitor, a task notification).
+    if [ -n "$sid" ]; then
+      _ds_voice_mkdirs
+      : > "$DS_VOICE_DIR/prompted/$(_ds_voice_safe "$sid")" 2>/dev/null
+    fi
+    return 0
+  fi
+  [ -n "$sid" ] || return 0
+  if [ -f "$DS_VOICE_DIR/prompted/$(_ds_voice_safe "$sid")" ]; then
+    background=false
+    rm -f "$DS_VOICE_DIR/prompted/$(_ds_voice_safe "$sid")"
+  fi
   pid=$(_ds_voice_claude_pid)
   if [ -n "$pid" ] && [ -f "$DS_VOICE_DIR/spoke/$pid" ]; then
     rm -f "$DS_VOICE_DIR/spoke/$pid"
@@ -422,37 +457,46 @@ _ds_voice_on_reply_event() {  # event-type hook-input
   # Nobody at the computer: a summary of this reply would be stale by the
   # time anyone hears it, and it is on screen anyway.
   _ds_voice_can_play || return 0
-  sid=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
-  [ -n "$sid" ] || return 0
   # Private sessions keep the reply on this machine and get the template.
   [ "$privacy" = "private" ] || last=$(printf '%s' "$input" | jq -r \
     --argjson h "$DS_VOICE_REPLY_HEAD" --argjson t "$DS_VOICE_REPLY_TAIL" '
       .last_assistant_message // "" | if length > ($h + $t) then .[:$h] + " ... " + .[-$t:] else . end' 2>/dev/null)
   eid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "r-$(_ds_now_ns)")
   _ds_voice_mkdirs
-  job="$DS_VOICE_DIR/replies/$(printf '%s' "$sid" | tr -cd 'A-Za-z0-9_-').json"
+  job="$DS_VOICE_DIR/replies/$(_ds_voice_safe "$sid").json"
   tmp="$job.tmp.$$"
   cwd=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null)
   jq -n --arg eid "$eid" --arg sid "$sid" --arg dsid "${DS_VOICE_SESSION:-$sid}" --arg privacy "$privacy" --arg last "$last" \
-    --arg project "$(basename "${cwd:-session}")" --arg branch "$(_ds_voice_branch "$cwd")" \
-    '{eventId: $eid, sessionId: $sid, dsSessionId: $dsid, project: $project, branch: $branch, lastMessage: $last, privacy: $privacy}' \
+    --arg project "$(basename "${cwd:-session}")" --arg branch "$(_ds_voice_branch "$cwd")" --argjson bg "$background" \
+    '{eventId: $eid, sessionId: $sid, dsSessionId: $dsid, project: $project, branch: $branch, lastMessage: $last,
+      privacy: $privacy, background: $bg}' \
     > "$tmp" && mv "$tmp" "$job" || { rm -f "$tmp"; return 0; }
   _ds_voice_spawn "$DS_VOICE_LIB_DIR/speak.sh" reply "$sid" "$eid"
 }
 
 # The text for a queued reply: an AI summary, or the template when the session
-# is private, the reply was empty or the server fails.
+# is private, the reply was empty or the server fails. Fails when the server
+# judged the reply not worth saying (background noise, nothing new): then
+# nothing is spoken. voice.json `auto_skip: false` asks for every reply.
 _ds_voice_reply_text() {  # job-file
-  local body text="" privacy sid
+  local body text="" privacy sid csid may_skip=true rc
   read -r privacy < <(jq -r '.privacy' "$1" 2>/dev/null) || return 1
   sid=$(jq -r '.dsSessionId // .sessionId // ""' "$1" 2>/dev/null)
+  csid=$(jq -r '.sessionId // ""' "$1" 2>/dev/null)
+  [ "$(_ds_voice_conf .auto_skip true)" = false ] && may_skip=false
   if [ "$privacy" != "private" ] && [ -n "${DEVSCOPE_API_KEY:-}" ]; then
     body=$(jq -c --arg length "$(_ds_voice_verbosity auto)" --arg label "$(_ds_voice_label "$sid")" \
+      --argjson skip "$may_skip" --arg previous "$(_ds_voice_last_said "$csid")" \
       '{trigger: "reply", project: .project, last_message: .lastMessage, length: $length,
         session_id: (.dsSessionId // .sessionId), label: $label}
+       + (if $skip then {may_skip: true, background: (.background // false), previous: $previous} else {} end)
        | with_entries(select(.value != "" and .value != null))' "$1" 2>/dev/null)
     if printf '%s' "$body" | jq -e '.last_message' >/dev/null 2>&1; then
-      text=$(_ds_voice_summary "$body" "$sid")
+      text=$(_ds_voice_summary "$body" "$sid"); rc=$?
+      if [ "$rc" = 2 ]; then
+        _ds_voice_log "skip reply ($(jq -r 'if .background then "background" else "prompted" end' "$1" 2>/dev/null)): nothing worth saying"
+        return 1
+      fi
     fi
   fi
   [ -n "$text" ] || text=$(_ds_voice_template finished "$(_ds_voice_name "$1")")

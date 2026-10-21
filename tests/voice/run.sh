@@ -383,6 +383,27 @@ wait_spoken 1 5; [ "$(last_at $S_AT .body.length)" = short ] && ok "auto voice s
 jq 'del(.verbosity)' "$CONF" > "$TMP/c" && mv "$TMP/c" "$CONF"
 [ "$(lines)" = 1 ] && [ ! -d "$PENDING" ] || [ -z "$(ls "$PENDING" 2>/dev/null)" ] && ok "no announcer marker when the announcer is off" || bad "announcer" "$(ls "$PENDING")"
 
+# 12a. The server may judge a reply not worth saying (background noise, nothing new).
+VLOG="$HOME/.cache/devscope/voice/voice.log"
+PROMPT='{hook_event_name: "UserPromptSubmit", prompt: "fix the timer"}'
+reset; respond '{"skip": true, "label": "plugin, reminder timer"}'
+hook response-stop.sh k1 /work/plugin "$STOP"; sleep 2
+[ "$(lines)" = 0 ] && ok "skip: nothing spoken" || bad "skip spoken" "$(spoken)"
+[ "$(last_at $S_AT .body.may_skip)/$(last_at $S_AT .body.background)" = "true/true" ] && ok "a turn without a prompt is sent as background, skippable" || bad "skip body" "$(last_at $S_AT .body)"
+grep -q "skip reply (background)" "$VLOG" && ok "skip is logged" || bad "skip log" "$(tail -3 "$VLOG")"
+[ ! -f "$HOME/.cache/devscope/voice/replies/k1.json" ] && ok "skip: job removed" || bad "skip job" "left behind"
+[ "$(cat "$HOME/.cache/devscope/voice/labels/k1" 2>/dev/null)" = "plugin, reminder timer" ] && ok "skip still keeps the label" || bad "skip label" "$(ls "$HOME/.cache/devscope/voice/labels")"
+reset; respond '{"text": "The timer is fixed."}'
+hook prompt-submit.sh k2 /work/plugin "$PROMPT"; hook response-stop.sh k2 /work/plugin "$STOP"
+wait_spoken 1 5; [ "$(last_at $S_AT .body.background)" = false ] && ok "a prompted turn is not background" || bad "prompted" "$(last_at $S_AT .body)"
+[ "$(last_at $S_AT .body.previous)" = null ] && ok "no previous summary on a first turn" || bad "first previous" "$(last_at $S_AT .body)"
+reset; hook response-stop.sh k2 /work/plugin "$STOP"
+wait_spoken 1 5; [ "$(last_at $S_AT .body.previous)/$(last_at $S_AT .body.background)" = "The timer is fixed./true" ] && ok "sends the last spoken summary; the prompt marker is used once" || bad "previous" "$(last_at $S_AT .body)"
+reset; jq '.auto_skip = false' "$CONF" > "$TMP/c" && mv "$TMP/c" "$CONF"
+hook response-stop.sh k3 /work/plugin "$STOP"
+wait_spoken 1 5; [ "$(last_at $S_AT .body.may_skip)/$(last_at $S_AT .body.previous)" = "null/null" ] && ok "auto_skip false: every reply summarized" || bad "auto_skip off" "$(last_at $S_AT .body)"
+jq 'del(.auto_skip)' "$CONF" > "$TMP/c" && mv "$TMP/c" "$CONF"
+
 reset
 DEVSCOPE_PRIVACY=private hook response-stop.sh r2 /work/secret "$STOP"
 wait_spoken 1 5 && [ "$(spoken)" = "secret is done and waiting for you." ] && ok "private: template only" || bad "reply private" "$(spoken)"

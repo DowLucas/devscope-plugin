@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.36.0] - 2026-10-21
+
+### Added
+- **Auto voice skips background noise.** After each turn the server now
+  decides whether the reply is worth saying out loud. Turns started by a
+  background event (a monitor expiring, a task notification, a progress
+  update) are spoken only when they bring news: finished work, a failure, or a
+  new question. A reply that only restates what the last summary said is
+  skipped too. Turns you started are still summarized, and failures are never
+  skipped. The plugin tells the server whether you prompted the turn
+  (`prompted/<session>`) and sends the summary it last spoke for the session
+  (`last/<session>`). Skips are logged in `voice.log`. Set `"auto_skip": false`
+  in `voice.json` to hear every reply again. Needs a server with skip support;
+  older servers keep summarizing every reply.
+
 ## [0.35.1] - 2026-10-09
 
 ### Changed
