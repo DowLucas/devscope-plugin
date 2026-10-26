@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.36.0] - 2026-10-26
+
+### Changed
+- **The local voice speaks long text in one go.** With `/devscope:voice model
+  local` (macOS `say`, `spd-say`, `espeak`), explanations and reply summaries
+  are no longer split into pieces of at most 400 characters: that limit is the
+  server voice's, and each piece restarted the voice's intonation. The text is
+  still cut after 5000 characters. Locking the screen still stops it, now
+  mid-speech (checked every second), and the voice bar shows one piece with an
+  estimated length. Server voices and the Piper fallback are unchanged.
+
 ## [0.35.1] - 2026-10-09
 
 ### Changed
