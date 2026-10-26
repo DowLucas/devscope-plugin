@@ -35,7 +35,8 @@ case "${1:-}" in
     export DS_VOICE_PROGRESS_PROJECT DS_VOICE_PROGRESS_SESSION
     # Summarized before waiting for a turn: sessions that finish together get
     # their summaries in parallel instead of each waiting on the others' calls.
-    TEXT=$(_ds_voice_reply_text "$JOB") || exit 0
+    # Fails when the server judged the reply not worth saying.
+    TEXT=$(_ds_voice_reply_text "$JOB") || { current && rm -f "$JOB"; exit 0; }
     PRIVACY=$(jq -r '.privacy' "$JOB" 2>/dev/null)
     speak_reply() {
       local text="$TEXT" privacy="$PRIVACY"
@@ -46,6 +47,7 @@ case "${1:-}" in
       _ds_voice_can_play || return 0
       _ds_voice_log "speak reply: $text"
       _ds_voice_speak_long "$text" "$privacy"
+      _ds_voice_remember_said "$DS_VOICE_PROGRESS_SESSION" "$text"
       current && rm -f "$JOB"
       _ds_voice_progress_done
     }

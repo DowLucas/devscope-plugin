@@ -247,6 +247,13 @@ claude plugin disable devscope@devscope                  # Disable
   and speaks under the lock; a newer reply from the same session replaces an older one.
   This deliberately sends response text in `standard` mode too: the user turned the
   feature on for exactly that, and the endpoint stores nothing.
+- **Skipping noise** (voice.json `auto_skip`, default on): the reply request carries `may_skip: true`,
+  `background` (no `prompt.submit` since the last turn: `prompted/<session>` is written by the prompt
+  hook and consumed by Stop, so a turn started by a monitor or task notification is background) and
+  `previous` (the summary last spoken for the session, `last/<session>`, written by `speak.sh` after
+  speaking). The server may answer `{skip: true}`; `_ds_voice_summary` then returns 2, nothing is
+  spoken, the job is removed and `voice.log` gets `skip reply (background|prompted)`. A server
+  without skip support ignores the fields and always returns text.
 - **Verbosity** (`/devscope:voice verbosity`, voice.json `verbosity: {explain, auto}`: short |
   normal | long). Auto voice sends it as `length` with the `reply` summary request. Explain
   mode reads it inline (`` !`cli.sh verbosity explain` `` in commands/voice.md) and its level

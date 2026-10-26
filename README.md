@@ -251,6 +251,8 @@ Auto voice is a short spoken summary whenever Claude finishes a reply: the outco
 - `/devscope:voice auto` turns it on or off for the session you type it in (`auto on`, `auto off`; plain `auto` toggles). It lasts as long as that Claude Code window, `/clear` included.
 - `/devscope:voice auto-default on|off` is the setting for every session where you have not used `auto` (off unless you turn it on).
 
+**It stays quiet on noise.** Turns you did not start yourself, such as a monitor expiring or a task notification, are only spoken when they bring news: finished work, a failure, or a new question. A reply that just repeats what the last summary told you is skipped too. Turns you started are still summarized, and failures are never skipped. Set `"auto_skip": false` in `voice.json` to hear every reply.
+
 `/devscope:voice status` shows both. The reply is sent to your DevScope server to summarize and is not stored; in `private` mode you only hear which project finished, voiced locally.
 
 ### Explain it out loud
