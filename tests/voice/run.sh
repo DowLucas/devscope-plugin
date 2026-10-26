@@ -340,6 +340,22 @@ stopped=$( export DS_VOICE_SPEAK_LOG="$TMP/spoken"; . "$S/_helpers.sh"; . "$S/vo
 [ "$stopped" = 1 ] && ok "locked mid-explanation: stops after the current piece" || bad "explain stop" "$stopped pieces"
 rm -f "$LOCK"
 
+# model local: long speech is one utterance, with a bar length for the mod.
+reset; configure '.engine = "system"'
+whole=$( export DS_VOICE_SPEAK_LOG="$TMP/spoken" DS_VOICE_PROGRESS_KIND=explain; . "$S/_helpers.sh"; . "$S/voice/lib.sh"
+  _ds_voice_speak() { jq -c '[.piece, .pieces, (.pieceMs > 60000)]' "$DS_VOICE_PROGRESS"; printf '%s\n' "$1" >> "$DS_VOICE_SPEAK_LOG"; }
+  _ds_voice_speak_long "$LONG" standard)
+[ "$(grep -c . "$TMP/spoken")" = 1 ] && [ "$(sed 's/ $//' "$TMP/spoken")" = "$(printf '%s' "$LONG" | sed 's/ $//')" ] && \
+  [ "$whole" = "[0,1,true]" ] && ok "model local: long speech is spoken whole, one piece with its length" || bad "local whole" "$whole $(grep -c . "$TMP/spoken") lines"
+# ...and a lock while it plays stops it, rather than waiting for the end.
+reset; configure '.engine = "system"'
+t0=$(date +%s)
+( export DS_VOICE_SPEAK_LOG="$TMP/spoken" DS_VOICE_TEST_SPEAK_SEC=20; . "$S/_helpers.sh"; . "$S/voice/lib.sh"
+  ( sleep 1; touch "$LOCK" ) & _ds_voice_speak_long "$LONG" standard )
+took=$(( $(date +%s) - t0 ))
+[ "$took" -le 5 ] && [ ! -s "$TMP/spoken" ] && ok "model local: locking the screen stops it mid-speech (${took}s)" || bad "local lock" "took ${took}s"
+rm -f "$LOCK"; configure
+
 # when-locked play ignores the lock.
 reset; "$S/voice/cli.sh" when-locked play >/dev/null; touch "$LOCK"
 ( . "$S/_helpers.sh"; . "$S/voice/lib.sh"; _ds_voice_can_play ) && ok "when-locked play: speaks while locked" || bad "play override" ""

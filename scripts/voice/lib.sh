@@ -1111,6 +1111,40 @@ _ds_voice_chunks() {
     }'
 }
 
+# End a process and everything it started (the speech engine under timeout).
+_ds_voice_kill_tree() {  # pid
+  local c
+  for c in $(pgrep -P "$1" 2>/dev/null); do _ds_voice_kill_tree "$c"; done
+  kill "$1" 2>/dev/null
+  return 0
+}
+
+# Speak a long text as one utterance with a local voice. The screen lock is
+# checked while it plays, since there is no next piece to stop at.
+_ds_voice_speak_whole() {  # text privacy
+  local ms pid timeout
+  _ds_voice_can_play || { _ds_voice_log "screen locked: speech not started"; return 0; }
+  # About 15 characters a second at 1x, a little slower than the voices talk:
+  # the bar's length, and twice that (at least the usual limit) before a hung
+  # engine is killed.
+  ms=$(awk -v n="${#1}" -v s="$(_ds_voice_speed)" 'BEGIN { printf "%d", n * 1000 / (15 * s) }')
+  timeout=$(( ms / 500 + 30 ))
+  [ "$timeout" -ge "$DS_VOICE_SPEAK_TIMEOUT" ] || timeout=$DS_VOICE_SPEAK_TIMEOUT
+  _ds_voice_progress speaking 0 1 "$ms"
+  ( DS_VOICE_SPEAK_TIMEOUT=$timeout; _ds_voice_speak "$1" "$2" ) &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if ! _ds_voice_can_play; then
+      _ds_voice_log "screen locked: speech stopped"
+      _ds_voice_kill_tree "$pid"
+      break
+    fi
+    sleep 1
+  done
+  wait "$pid" 2>/dev/null || true
+  return 0
+}
+
 # Speak a long text piece by piece. With the server voice the next piece is
 # fetched while the current one plays, so there is no gap; if the server fails
 # partway, the rest is spoken with a local voice.
@@ -1124,6 +1158,12 @@ _ds_voice_speak_long() {  # text [privacy]
   [ "$n" -gt 0 ] || return 0
   engine=$(_ds_voice_conf .engine auto)
   [ "$engine" = "off" ] && return 0
+  # `model local`: the computer's own voice takes any length, so the text (cut
+  # as above) is spoken in one go, without the intonation restarting each piece.
+  if [ "$engine" = "system" ]; then
+    _ds_voice_speak_whole "${chunks[*]}" "$privacy"
+    return 0
+  fi
   if [ -n "${DS_VOICE_SPEAK_LOG:-}" ] || [ "$privacy" = "private" ] || [ -z "${DEVSCOPE_API_KEY:-}" ] || \
      { [ "$engine" != "auto" ] && [ "$engine" != "server" ]; }; then
     while [ "$i" -lt "$n" ]; do

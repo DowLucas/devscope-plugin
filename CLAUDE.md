@@ -261,7 +261,9 @@ claude plugin disable devscope@devscope                  # Disable
 - **Long speech** (`/devscope:voice explain` → `cli.sh say`, text on stdin): `speak.sh say` speaks
   it detached via `_ds_voice_speak_long`, which splits it into pieces of at most 400
   characters (first at most 200, so speech starts fast; `voice-audio` takes 440) and fetches
-  the next piece while the current one plays. `say` touches `spoke/<claude-pid>` so that
+  the next piece while the current one plays. With `model local` (`engine: system`) it is not split:
+  `_ds_voice_speak_whole` speaks the text (still cut at `DS_VOICE_LONG_MAX`) as one utterance, with an
+  estimated `pieceMs` (15 chars/s at 1x) for the bar and a speech timeout scaled to it. `say` touches `spoke/<claude-pid>` so that
   turn's reply is not also summarized; the Stop hook consumes it, a new prompt clears it.
   `cli.sh stop` kills every registered `speakers/<pid>` process group.
 - **Screen lock** (`_ds_voice_screen_locked`, `_ds_voice_can_play`; voice.json `when_locked:
@@ -271,7 +273,8 @@ claude plugin disable devscope@devscope                  # Disable
   read counts as unlocked (SSH, servers, lockers without LockedHint). While locked: `timer.sh`
   holds due announcements (re-checks every `DS_VOICE_LOCK_POLL` s, reminder count untouched; the
   30-minute stale rule still drops them), `_ds_voice_on_reply_event` and `speak.sh reply` skip auto
-  voice, `_ds_voice_speak_long` stops before the next piece. Tests use `DS_VOICE_LOCKED_FILE`
+  voice, `_ds_voice_speak_long` stops before the next piece (with `model local`, whose speech is one
+  piece, it polls the lock every second while speaking and kills the engine). Tests use `DS_VOICE_LOCKED_FILE`
   (locked while the file exists) and fake `loginctl`/`ioreg` on `PATH`.
 - **Pieces** (`_ds_voice_chunks`): each piece is a separate recording and the voice's intonation
   restarts at each, so text up to `DS_VOICE_ONE_REQUEST` (440, what voice-audio takes) is never
