@@ -18,12 +18,15 @@ as a `queue-operation` entry with `operation: "enqueue"` and a timestamp:
   bg_commands.py scan <transcript.jsonl>
       The commands that settled since the last scan, as a JSON array of
       {toolUseId, taskId, status, exitCode?, finishedAt} ([] when none).
-      Reads incrementally: the byte offset of the last complete line is kept
-      in ~/.cache/devscope/bg/<transcript>.offset.
+      Reads incrementally: the byte offset of the last line reported is kept
+      in ~/.cache/devscope/bg/<transcript>.offset, under an exclusive lock so
+      a Stop and a SessionEnd running at once never report twice. At most 200
+      per call; the rest is read by the next call.
 
 Only ids, the status, the exit code and the time leave the machine: never the
 command, its description (inside the summary) or its output path.
 """
+import fcntl
 import json
 import os
 import re
@@ -76,15 +79,24 @@ def parse_entry(entry):
         "status": status[:20],
         "finishedAt": finished_at[:50],
     }
-    code = re.search(r"exit code (-?\d+)", summary)
-    if code:
-        item["exitCode"] = int(code.group(1))
+    # The real "(exit code N)" ends the summary; the description before it
+    # could contain the words too.
+    codes = re.findall(r"exit code (-?\d+)", summary)
+    if codes:
+        item["exitCode"] = int(codes[-1])
     return item
 
 
 def scan(transcript):
     if not os.path.isfile(transcript):
         return []
+    os.makedirs(cache_dir(), mode=0o700, exist_ok=True)
+    with open(offset_path(transcript) + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)  # the offset read-modify-write is one step
+        return scan_locked(transcript)
+
+
+def scan_locked(transcript):
     state = offset_path(transcript)
     try:
         with open(state) as f:
@@ -100,17 +112,17 @@ def scan(transcript):
         for raw in f:
             if not raw.endswith(b"\n"):
                 break  # half-written line: read it next time
+            if b'"queue-operation"' in raw:
+                try:
+                    item = parse_entry(json.loads(raw))
+                except (ValueError, AttributeError):
+                    item = None
+                if item and item["toolUseId"] not in seen:
+                    if len(found) >= MAX_ITEMS:
+                        break  # full: this line is the first of the next call
+                    seen.add(item["toolUseId"])
+                    found.append(item)
             offset += len(raw)
-            if b'"queue-operation"' not in raw:
-                continue
-            try:
-                item = parse_entry(json.loads(raw))
-            except (ValueError, AttributeError):
-                continue
-            if item and item["toolUseId"] not in seen and len(found) < MAX_ITEMS:
-                seen.add(item["toolUseId"])
-                found.append(item)
-    os.makedirs(cache_dir(), mode=0o700, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=cache_dir())
     with os.fdopen(fd, "w") as f:
         f.write(str(offset))

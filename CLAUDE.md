@@ -326,19 +326,28 @@ command, `backgroundTaskId` + `runInBackground` (0.38.0+; the server's `command_
 `tool-use.sh` wrote under `~/.cache/devscope/timings/<tool_use_id>`.
 
 - **Signature** (`_ds_command_signature`, jq, bounded passes only since it runs on every Bash
-  call): the first segment of a chain that is not set-up (`cd`, `export`, `echo`, `mkdir`, ...),
-  without `VAR=val` and wrappers (`sudo`, `env`, `time`, `timeout N`, `nice`, `nohup`); the
-  program's basename, then words matching `^[a-z][a-z0-9_:-]{0,23}$` up to the first that does
-  not. Two words, three only when the second names a group (`run`, `compose`, `pr`, `stash`, ...),
-  because a third word is usually an argument (`git checkout <branch>`). Private: program only.
+  call). Quoted spans and heredoc bodies are removed first, so nothing quoted can become a
+  program or word. Then the first segment of the chain that is not set-up (`cd`, `export`,
+  `echo`, `mkdir`, ...), without `VAR=val` and wrappers (`sudo`, `env`, `time`, `timeout`,
+  `nice`, `nohup`) with their options and option values; the program's basename. Only programs
+  in `multi` (those that take subcommands: `git`, `docker`, `bun`, `npm`, `gh`, `make`, ...)
+  keep words after it, matching `^[a-z][a-z0-9_:-]{0,23}$` up to the first that does not: two
+  words, three only when the second names a group (`run`, `compose`, `pr`, `stash`, ...),
+  because a third word is usually an argument (`git checkout <branch>`). Everything else is the
+  program alone (`cat <file>` is `cat`). Private: program only. The backend's `cleanSignature`
+  enforces the same `multi` list: change both.
 - **Background commands**: PostToolUse fires when a command is backgrounded, and no hook fires
   when it settles. `tool-complete.sh` touches `~/.cache/devscope/bg/<session>.active`;
   `_ds_report_bg_commands` (Stop, and SessionEnd with `final`, before `session.end` because
   send-event.sh maps the session through the state file SessionEnd removes) runs
-  `bg_commands.py scan` for marked sessions only. It reads the transcript from a byte offset
-  (`bg/<transcript>.offset`) for `queue-operation` `enqueue` entries whose `<task-notification>`
+  `bg_commands.py scan` for marked sessions only, in batches of at most 200 (up to 5). It reads
+  the transcript from a byte offset (`bg/<transcript>.offset`, read and written under
+  `flock` on `.offset.lock`, so a concurrent Stop and SessionEnd never report twice; `final`
+  drops only the marker, and offsets go 7 days after their marker) for
+  `queue-operation` `enqueue` entries whose `<task-notification>`
   summary starts with `Background command` (agents and monitors notify too) and sends
-  `{commands: [{toolUseId, taskId, status, exitCode?, finishedAt}]}` as
+  `{commands: [{toolUseId, taskId, status, exitCode?, finishedAt}]}` (exit code from the last
+  `exit code N` in the summary: the description comes first) as
   `command.background_complete`. Never the summary (it holds the description) or the output path.
   Subagent transcripts hold no queue operations.
 - Tests: `tests/commands/run.sh`.

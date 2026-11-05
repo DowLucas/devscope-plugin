@@ -10,8 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Command timing.** Bash calls now carry what DevScope needs to show which
   commands Claude waits on and whether they are getting slower: Claude Code's
   `tool_use_id`, a command signature (`commandSignature`: the program and up to
-  two plain words, such as `bun run build` or `docker compose up`; never the
-  command, its arguments, paths or messages; in `private` mode the program
+  two plain words for programs that take subcommands, such as `bun run build`
+  or `docker compose up`, and the program alone for any other (`cat <file>` is
+  `cat`); quoted text and heredoc bodies are never read, so the command, its
+  arguments, paths and messages are never sent; in `private` mode the program
   only), and for a backgrounded command its task id. A background command's
   PostToolUse fires when it is backgrounded, so its real duration is read from
   the transcript at Stop and SessionEnd (`scripts/bg_commands.py`: when Claude
