@@ -59,6 +59,10 @@ PAYLOAD=$(jq -n \
    | if ($tu | length) > 0 then . + {tokenUsage: $tu} else . end
    | if ($us | length) > 0 then . + {usageSnapshot: $us} else . end')
 
+# Background commands that settled since the last Stop. Before session.end:
+# send-event.sh maps the session through the state file removed below.
+_ds_report_bg_commands "$INPUT" final
+
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "session.end" "$PAYLOAD"
 
 # Clean up all session state files

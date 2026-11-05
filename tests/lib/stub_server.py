@@ -5,7 +5,8 @@
 Answers every request with the body in DIR/resp (sleeping 5 s first if
 DIR/slow exists), appends one byte per request to DIR/hits, and writes the
 last request's path, API key and JSON body to DIR/last (and per path to
-DIR/last<path with / as _>), and appends each path to DIR/paths. DIR/status and DIR/ctype, when present, override the
+DIR/last<path with / as _>), and appends each path to DIR/paths and each
+request to DIR/all.jsonl. DIR/status and DIR/ctype, when present, override the
 response status (200) and content type (application/json). POSTs without the
 x-requested-with header get 403, like the backend's CSRF middleware (which
 exempts /api/events).
@@ -35,6 +36,8 @@ class H(BaseHTTPRequestHandler):
         open(os.path.join(d, "paths"), "a").write(self.path + "\n")
         req = {"method": method, "path": self.path, "key": self.headers.get("x-api-key"),
                "body": json.loads(raw) if raw else None}
+        with open(os.path.join(d, "all.jsonl"), "a") as f:
+            f.write(json.dumps(req) + "\n")
         for name in ("last", "last" + self.path.split("?")[0].replace("/", "_")):
             with open(os.path.join(d, name), "w") as f:
                 json.dump(req, f)

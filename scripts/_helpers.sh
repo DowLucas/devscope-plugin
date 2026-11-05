@@ -503,3 +503,82 @@ _ds_extract_subcommand() {
       ;;
   esac
 }
+
+# A command's signature for timing: the program and up to two plain words after
+# it ("bun run build", "docker compose up", "git push"), so durations can be
+# compared by what ran without sending the command itself. The main segment of a
+# chain is the first one that is not set-up (`cd x && bun test` is "bun test");
+# env assignments and wrappers (sudo, env, time, timeout N, nice, nohup) are
+# skipped. Words stop at the first flag, path, quote, number or `=`, so
+# arguments (messages, file names, ids) never become part of it. Private mode
+# keeps the program only, the same as toolSubcommand.
+# Usage: _ds_command_signature "$RAW_TOOL_INPUT_JSON"
+_ds_command_signature() {
+  local max_words=3
+  [ "${DEVSCOPE_PRIVACY:-standard}" = "private" ] && max_words=1
+  # Only bounded passes (reduce over the words): this runs on every Bash call.
+  printf '%s' "$1" | jq -r --argjson max "$max_words" '
+    def words: [splits("[ \t]+")] | map(select(length > 0));
+    # Drop leading VAR=val, wrappers, and timeout with its flags and duration.
+    def unwrap:
+      reduce .[] as $t ({prefix: true, timeout: false, out: []};
+        if .prefix | not then .out += [$t]
+        elif ($t | test("^[A-Za-z_][A-Za-z0-9_]*=")) then .
+        elif ($t | IN("sudo", "env", "time", "nice", "nohup", "command", "exec", "builtin")) then .timeout = false
+        elif $t == "timeout" then .timeout = true
+        elif .timeout and ($t | test("^[-0-9]")) then .
+        else .prefix = false | .out = [$t] end)
+      | .out;
+    def setup: IN("cd", "pushd", "popd", "export", "source", ".", "set", "unset", "shopt",
+                   "true", ":", "echo", "printf", "trap", "local", "declare", "mkdir");
+    def prog: split("/") | last | ascii_downcase | gsub("[^a-z0-9._+-]"; "");
+    def plain: test("^[a-z][a-z0-9_:-]{0,23}$");
+    # A third word is kept only after a word that names a group of commands
+    # ("npm run test:unit", "docker compose up", "gh pr view"); otherwise it is
+    # usually an argument ("git checkout <branch>", "docker logs <container>").
+    def group: IN("run", "run-script", "compose", "exec", "x", "workspace", "workspaces",
+                  "pr", "issue", "repo", "release", "workflow", "api", "auth",
+                  "container", "image", "volume", "network", "system", "buildx", "builder",
+                  "stash", "worktree", "submodule", "remote", "bisect", "lfs",
+                  "plugin", "plugins", "marketplace", "mcp", "config", "cache", "db", "migrate");
+    (.command // "" | tostring | .[:2000])
+    | [splits("&&|\\|\\||;|\\||\n")]
+    | map(gsub("^[\\s({]+"; "") | gsub("[\\s)}]+$"; "") | words | unwrap | select(length > 0))
+    | (map(select((.[0] | prog | setup) | not)) | first) // first // []
+    | if length == 0 or (.[0] | prog) == "" then ""
+      else
+        ([.[0] | prog]
+         + (.[1:] | reduce .[] as $w ({out: [], stop: false};
+              if .stop or ($w | plain | not) then .stop = true else .out += [$w] end)
+            | .out))
+        | if length > 2 and (.[1] | group | not) then .[:2] else . end
+        | .[:$max] | join(" ")
+      end
+  ' 2>/dev/null || true
+}
+
+# Report background Bash commands that settled since the last call, as one
+# `command.background_complete` event ({commands: [...]}, see bg_commands.py).
+# Runs only for sessions tool-complete.sh marked as having backgrounded a
+# command, so other sessions never read their transcript for this. `final`
+# (SessionEnd) also drops the marker and offset. Needs SCRIPT_DIR (hook scripts
+# set it) and python3; does nothing without them.
+# Usage: _ds_report_bg_commands "$INPUT" [final]
+_ds_report_bg_commands() {
+  local input="$1" final="${2:-}" sid transcript dir found count
+  sid=$(printf '%s' "$input" | jq -r '.session_id // ""' 2>/dev/null | tr -cd 'a-zA-Z0-9_-')
+  transcript=$(printf '%s' "$input" | jq -r '.transcript_path // ""' 2>/dev/null)
+  dir="${XDG_CACHE_HOME:-$HOME/.cache}/devscope/bg"
+  [ -n "$sid" ] && [ -f "$dir/$sid.active" ] && [ -n "$transcript" ] || return 0
+  command -v python3 >/dev/null 2>&1 && [ -n "${SCRIPT_DIR:-}" ] || return 0
+  found=$(python3 "$SCRIPT_DIR/bg_commands.py" scan "$transcript" 2>/dev/null || echo '[]')
+  count=$(printf '%s' "$found" | jq 'length' 2>/dev/null || echo 0)
+  if [ "${count:-0}" -gt 0 ] 2>/dev/null; then
+    printf '%s' "$input" | "$SCRIPT_DIR/send-event.sh" "command.background_complete" \
+      "$(jq -nc --argjson c "$found" '{commands: $c}')" >/dev/null 2>&1 || true
+  fi
+  if [ "$final" = "final" ]; then
+    rm -f "$dir/$sid.active" "$dir/$(basename "$transcript" .jsonl | tr -cd 'a-zA-Z0-9_-').offset" 2>/dev/null || true
+  fi
+  find "$dir" -type f -mtime +7 -delete 2>/dev/null || true
+}
