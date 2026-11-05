@@ -53,10 +53,14 @@ fi
 SESSION_ID_SAFE=$(echo "$SESSION_ID" | tr -cd 'a-zA-Z0-9_-')
 TOOL_NAME_SAFE=$(echo "$TOOL_NAME" | tr -cd 'a-zA-Z0-9_-')
 
-# Write start timestamp for duration calculation
+# Write start timestamp for duration calculation. Claude Code 2.1.318+ sends
+# `duration_ms` on PostToolUse itself; this is the fallback for older versions.
+# Keyed by tool_use_id so parallel calls of one tool do not overwrite each
+# other's start (the session_tool key is for inputs without an id).
+TOOL_USE_ID_SAFE=$(echo "$INPUT" | jq -r '.tool_use_id // ""' | tr -cd 'a-zA-Z0-9_-')
 TIMING_DIR="${HOME}/.cache/devscope/timings"
 mkdir -p -m 0700 "$TIMING_DIR"
-echo "$(_ds_now_ns)" > "${TIMING_DIR}/${SESSION_ID_SAFE}_${TOOL_NAME_SAFE}"
+echo "$(_ds_now_ns)" > "${TIMING_DIR}/${TOOL_USE_ID_SAFE:-${SESSION_ID_SAFE}_${TOOL_NAME_SAFE}}"
 
 # Extract privacy-safe subcommand from raw input (before sanitization)
 RAW_INPUT_JSON=$(echo "$INPUT" | jq -c '.tool_input // {}')

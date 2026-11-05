@@ -16,7 +16,8 @@ respond() {  # body [content-type] [status]
   return 0
 }
 slow() { touch "$STUB_DIR/slow"; }
-reset_hits() { : > "$STUB_DIR/hits"; : > "$STUB_DIR/paths"; }
+reset_hits() { : > "$STUB_DIR/hits"; : > "$STUB_DIR/paths"; : > "$STUB_DIR/all.jsonl"; }
+events_of() { jq -c --arg t "$1" 'select(.path == "/api/events" and .body.eventType == $t) | .body' "$STUB_DIR/all.jsonl" 2>/dev/null; }  # eventType
 paths() { cat "$STUB_DIR/paths" 2>/dev/null; }
 hits() { [ -f "$STUB_DIR/hits" ] && wc -c < "$STUB_DIR/hits" | tr -d ' ' || echo 0; }
 last() { jq -r "$1" "$STUB_DIR/last"; }

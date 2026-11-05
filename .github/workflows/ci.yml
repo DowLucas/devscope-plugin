@@ -30,6 +30,7 @@ jobs:
             tests/recall/run.sh \
             tests/errors/run.sh \
             tests/voice/run.sh \
+            tests/commands/run.sh \
             tests/lib/stub.sh
 
   hooks-consistency:
@@ -71,6 +72,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run token usage tests (stub server, no backend required)
         run: bash tests/usage/run.sh
+
+  commands:
+    name: command timing test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run command timing tests (stub server, no backend required)
+        run: bash tests/commands/run.sh
 
   recall:
     name: prompt recall test

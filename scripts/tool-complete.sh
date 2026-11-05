@@ -50,15 +50,39 @@ fi
 SESSION_ID_SAFE=$(echo "$SESSION_ID" | tr -cd 'a-zA-Z0-9_-')
 TOOL_NAME_SAFE=$(echo "$TOOL_NAME" | tr -cd 'a-zA-Z0-9_-')
 
-# Calculate duration from start timestamp
+# Duration: Claude Code's own `duration_ms` (2.1.318+) when present, else the
+# start timestamp tool-use.sh wrote (keyed by tool_use_id, see there). The file
+# is removed either way so it does not pile up.
+TOOL_USE_ID=$(echo "$INPUT" | jq -r '.tool_use_id // ""')
+TOOL_USE_ID_SAFE=$(printf '%s' "$TOOL_USE_ID" | tr -cd 'a-zA-Z0-9_-')
 DURATION_MS=0
 TIMING_DIR="${HOME}/.cache/devscope/timings"
-TIMING_FILE="${TIMING_DIR}/${SESSION_ID_SAFE}_${TOOL_NAME_SAFE}"
+TIMING_FILE="${TIMING_DIR}/${TOOL_USE_ID_SAFE:-${SESSION_ID_SAFE}_${TOOL_NAME_SAFE}}"
 if [ -f "$TIMING_FILE" ]; then
   START_NS=$(cat "$TIMING_FILE")
   NOW_NS=$(_ds_now_ns)
   DURATION_MS=$(( (NOW_NS - START_NS) / 1000000 ))
   rm -f "$TIMING_FILE"
+fi
+CC_DURATION_MS=$(echo "$INPUT" | jq -r '.duration_ms // empty | numbers | floor' 2>/dev/null || true)
+[ -n "$CC_DURATION_MS" ] && DURATION_MS="$CC_DURATION_MS"
+
+# Bash command timing (command_runs on the server): a signature instead of the
+# command, and whether it went to the background. A backgrounded command's
+# PostToolUse fires when it is backgrounded, so its total time is only known
+# when it settles; bg_commands.py finds that in the transcript at Stop and
+# SessionEnd, and the marker below tells it this session has some to look for.
+COMMAND_SIGNATURE=""
+BG_TASK_ID=""
+RUN_IN_BG=false
+if [ "$TOOL_NAME" = "Bash" ]; then
+  COMMAND_SIGNATURE=$(_ds_command_signature "$(echo "$INPUT" | jq -c '.tool_input // {}')")
+  RUN_IN_BG=$(echo "$INPUT" | jq -r '.tool_input.run_in_background == true')
+  BG_TASK_ID=$(echo "$INPUT" | jq -r '(.tool_response // .tool_result // {}) | objects | .backgroundTaskId // ""' 2>/dev/null || true)
+  if [ -n "$BG_TASK_ID" ] && [ -n "$SESSION_ID_SAFE" ]; then
+    _DS_BG_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/devscope/bg"
+    mkdir -p -m 0700 "$_DS_BG_DIR" 2>/dev/null && touch "$_DS_BG_DIR/${SESSION_ID_SAFE}.active" 2>/dev/null || true
+  fi
 fi
 
 if [ "$HOOK_EVENT" = "PostToolUseFailure" ]; then
@@ -112,6 +136,10 @@ PAYLOAD=$(jq -n \
   --argjson intr "$IS_INTERRUPT" \
   --arg ts "$TOOL_SUBCOMMAND" \
   --arg tih "$TOOL_INPUT_HASH" \
+  --arg tuid "$TOOL_USE_ID" \
+  --arg cs "$COMMAND_SIGNATURE" \
+  --arg bg "$BG_TASK_ID" \
+  --argjson rib "$RUN_IN_BG" \
   '{toolName: $tn, success: $s, duration: $d}
    | if $em != "" then . + {errorMessage: $em} else . end
    | if $ai != "" then . + {agentId: $ai} else . end
@@ -119,7 +147,10 @@ PAYLOAD=$(jq -n \
    | if $tr != null then . + {toolResult: $tr} else . end
    | . + {isInterrupt: $intr}
    | if $ts != "" then . + {toolSubcommand: $ts} else . end
-   | . + {toolInputHash: $tih}')
+   | . + {toolInputHash: $tih}
+   | if $tuid != "" then . + {toolUseId: $tuid} else . end
+   | if $cs != "" then . + {commandSignature: $cs} else . end
+   | if $bg != "" then . + {backgroundTaskId: $bg, runInBackground: $rib} else . end')
 
 # Send the event and capture the backend's response body so we can surface
 # soft nudges back into Claude's session via stderr (exit 2 → system message).

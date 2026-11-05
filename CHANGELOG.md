@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.38.0] - 2026-11-05
+
+### Added
+- **Command timing.** Bash calls now carry what DevScope needs to show which
+  commands Claude waits on and whether they are getting slower: Claude Code's
+  `tool_use_id`, a command signature (`commandSignature`: the program and up to
+  two plain words for programs that take subcommands, such as `bun run build`
+  or `docker compose up`, and the program alone for any other (`cat <file>` is
+  `cat`); quoted text and heredoc bodies are never read, so the command, its
+  arguments, paths and messages are never sent; in `private` mode the program
+  only), and for a backgrounded command its task id. A background command's
+  PostToolUse fires when it is backgrounded, so its real duration is read from
+  the transcript at Stop and SessionEnd (`scripts/bg_commands.py`: when Claude
+  Code queued the notification that it finished, its status and exit code) and
+  sent as `command.background_complete`. Only sessions that backgrounded a
+  command scan their transcript, incrementally. Needs a DevScope server with
+  command timing; older servers ignore the new fields and drop the new event.
+
+### Fixed
+- **Durations of parallel tool calls.** The start time of a call was kept per
+  session and tool name, so two Bash calls running at once overwrote each
+  other's start and one got the wrong duration. Durations now come from
+  Claude Code's own `duration_ms` (2.1.318+), and the fallback timer is keyed by
+  `tool_use_id`.
+
 ## [0.37.0] - 2026-10-26
 
 ### Added

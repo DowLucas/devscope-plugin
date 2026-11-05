@@ -32,4 +32,7 @@ else
      | if ($us | length) > 0 then . + {usageSnapshot: $us} else . end')
 fi
 
+# Background commands that settled during this turn (or woke it up).
+_ds_report_bg_commands "$INPUT"
+
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "response.complete" "$PAYLOAD"

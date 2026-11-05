@@ -27,6 +27,8 @@ if [ -n "$TRANSCRIPT_PATH" ]; then
   rm -f "$_DS_USAGE_CACHE/$(basename "$TRANSCRIPT_PATH" .jsonl).json" 2>/dev/null || true
 fi
 find "$_DS_USAGE_CACHE" -name '*.json' -mtime +30 -delete 2>/dev/null || true
+# Start times of tool calls that never completed (e.g. denied in hard mode).
+find "${HOME}/.cache/devscope/timings" -type f -mmin +1440 -delete 2>/dev/null || true
 
 # Read accumulated file changes
 FILES_CHANGED="[]"
@@ -58,6 +60,10 @@ PAYLOAD=$(jq -n \
    | if $commit != "" then . + {gitCommit: $commit} else . end
    | if ($tu | length) > 0 then . + {tokenUsage: $tu} else . end
    | if ($us | length) > 0 then . + {usageSnapshot: $us} else . end')
+
+# Background commands that settled since the last Stop. Before session.end:
+# send-event.sh maps the session through the state file removed below.
+_ds_report_bg_commands "$INPUT" final
 
 echo "$INPUT" | "$SCRIPT_DIR/send-event.sh" "session.end" "$PAYLOAD"
 

@@ -503,3 +503,121 @@ _ds_extract_subcommand() {
       ;;
   esac
 }
+
+# A command's signature for timing ("bun run build", "docker compose up",
+# "git push"), so durations can be compared by what ran without sending the
+# command. Only programs that take subcommands (MULTI below) keep words after
+# the program, up to two, a third only after a group word; every other program
+# is the program alone (`cat <file>` is "cat"), since its words are operands.
+# Words stop at the first flag, path, number or `=`. Before splitting the chain,
+# quoted text and heredoc bodies are removed, so nothing quoted can become a
+# program or a word. The main segment is the first one that is not set-up
+# (`cd x && bun test` is "bun test"); env assignments and wrappers (sudo, env,
+# time, timeout, nice, nohup) are skipped with their options. Private mode keeps
+# the program only, the same as toolSubcommand. The server re-checks the same
+# rules (cleanSignature in the backend's commandQueries.ts): change both.
+# Usage: _ds_command_signature "$RAW_TOOL_INPUT_JSON"
+_ds_command_signature() {
+  local max_words=3
+  [ "${DEVSCOPE_PRIVACY:-standard}" = "private" ] && max_words=1
+  # Only bounded passes (reduce over the words): this runs on every Bash call.
+  printf '%s' "$1" | jq -r --argjson max "$max_words" '
+    def words: [splits("[ \t]+")] | map(select(length > 0));
+    # Everything after the line that starts a heredoc is its body.
+    def no_heredoc:
+      if test("<<") then
+        split("\n") as $l | ($l | map(test("<<")) | index(true)) as $i | $l[:$i + 1] | join("\n")
+      else . end;
+    # Quoted spans become a lone \u0001 token: never a program, never a word.
+    def no_quotes:
+      gsub("\"(\\\\.|[^\"\\\\])*\""; " \u0001 ") | gsub("\u0027[^\u0027]*\u0027"; " \u0001 ");
+    # Drop leading VAR=val and wrappers with their options (and option values).
+    def unwrap:
+      reduce .[] as $t ({prefix: true, wrap: false, skip: false, timeout: false, out: []};
+        if .prefix | not then .out += [$t]
+        elif .skip then .skip = false
+        elif ($t | test("^[A-Za-z_][A-Za-z0-9_]*=")) then .
+        elif ($t | IN("sudo", "env", "time", "nice", "nohup", "command", "exec", "builtin", "timeout"))
+          then .wrap = true | .timeout = ($t == "timeout")
+        elif .wrap and ($t | startswith("-")) then
+          (if ($t | IN("-u", "-g", "-n", "-s", "-k", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "-S",
+                       "--user", "--group", "--signal", "--kill-after", "--adjustment", "--chdir"))
+           then .skip = true else . end)
+        elif .timeout and ($t | test("^[0-9]")) then .timeout = false
+        else .prefix = false | .out = [$t] end)
+      | .out;
+    def setup: IN("cd", "pushd", "popd", "export", "source", ".", "set", "unset", "shopt",
+                   "true", ":", "echo", "printf", "trap", "local", "declare", "mkdir");
+    def prog: split("/") | last | ascii_downcase | gsub("[^a-z0-9._+-]"; "");
+    def plain: test("^[a-z][a-z0-9_:-]{0,23}$");
+    # Programs whose next word names what they do (a subcommand, script, target
+    # or tool), so it is kept.
+    def multi: IN("git", "gh", "glab", "docker", "podman", "kubectl", "helm", "terraform", "tofu",
+                  "npm", "pnpm", "yarn", "bun", "bunx", "npx", "deno", "cargo", "rustup",
+                  "go", "uv", "uvx", "pip", "pip3", "poetry", "pdm", "hatch", "conda",
+                  "brew", "apt", "apt-get", "dnf", "systemctl", "journalctl", "make", "just", "task",
+                  "claude", "gcloud", "aws", "az", "fly", "flyctl", "vercel", "wrangler", "supabase",
+                  "firebase", "dotnet", "mvn", "gradle", "gradlew", "mix", "rails", "bundle", "rake",
+                  "composer", "swift", "xcodebuild", "zig", "nix");
+    # A third word is kept only after a word that names a group of commands
+    # ("npm run test:unit", "docker compose up", "gh pr view"); otherwise it is
+    # usually an argument ("git checkout <branch>", "docker logs <container>").
+    def group: IN("run", "run-script", "compose", "exec", "x", "workspace", "workspaces",
+                  "pr", "issue", "repo", "release", "workflow", "api", "auth",
+                  "container", "image", "volume", "network", "system", "buildx", "builder",
+                  "stash", "worktree", "submodule", "remote", "bisect", "lfs",
+                  "plugin", "plugins", "marketplace", "mcp", "config", "cache", "db", "migrate");
+    (.command // "" | tostring | .[:2000] | no_heredoc | no_quotes)
+    | [splits("&&|\\|\\||;|\\||\n")]
+    | map(gsub("^[\\s({]+"; "") | gsub("[\\s)}]+$"; "") | words | unwrap | select(length > 0))
+    | (map(select((.[0] | prog | setup) | not)) | first) // first // []
+    | if length == 0 or (.[0] | prog) == "" then ""
+      else
+        (.[0] | prog) as $p
+        | ([$p]
+           + (if ($p | multi) then
+                .[1:] | reduce .[] as $w ({out: [], stop: false};
+                  if .stop or ($w | plain | not) then .stop = true else .out += [$w] end)
+                | .out
+              else [] end))
+        | if length > 2 and (.[1] | group | not) then .[:2] else . end
+        | .[:$max] | join(" ")
+      end
+  ' 2>/dev/null || true
+}
+
+# Report background Bash commands that settled since the last call, as
+# `command.background_complete` events ({commands: [...]}, up to 200 each, see
+# bg_commands.py). Runs only for sessions tool-complete.sh marked as having
+# backgrounded a command, so other sessions never read their transcript for
+# this. `final` (SessionEnd) drops the marker; the offset stays (a Stop still
+# running must not rescan from the start) until the sweep below. Needs
+# SCRIPT_DIR (hook scripts set it) and python3; does nothing without them.
+# Usage: _ds_report_bg_commands "$INPUT" [final]
+_ds_report_bg_commands() {
+  local input="$1" final="${2:-}" sid transcript dir found count batch f base
+  sid=$(printf '%s' "$input" | jq -r '.session_id // ""' 2>/dev/null | tr -cd 'a-zA-Z0-9_-')
+  transcript=$(printf '%s' "$input" | jq -r '.transcript_path // ""' 2>/dev/null)
+  dir="${XDG_CACHE_HOME:-$HOME/.cache}/devscope/bg"
+  [ -n "$sid" ] && [ -f "$dir/$sid.active" ] && [ -n "$transcript" ] || return 0
+  command -v python3 >/dev/null 2>&1 && [ -n "${SCRIPT_DIR:-}" ] || return 0
+  # A full batch means more may follow (the scan stops at 200); at most 5 rounds.
+  for batch in 1 2 3 4 5; do
+    found=$(python3 "$SCRIPT_DIR/bg_commands.py" scan "$transcript" 2>/dev/null || echo '[]')
+    count=$(printf '%s' "$found" | jq 'length' 2>/dev/null || echo 0)
+    [ "${count:-0}" -gt 0 ] 2>/dev/null || break
+    printf '%s' "$input" | "$SCRIPT_DIR/send-event.sh" "command.background_complete" \
+      "$(jq -nc --argjson c "$found" '{commands: $c}')" >/dev/null 2>&1 || true
+    [ "$count" -ge 200 ] || break
+  done
+  [ "$final" = "final" ] && rm -f "$dir/$sid.active" 2>/dev/null
+  # Sweep: markers after 7 days, offsets (and locks) after 7 days once their
+  # session's marker is gone.
+  find "$dir" -type f -name '*.active' -mtime +7 -delete 2>/dev/null || true
+  find "$dir" -type f \( -name '*.offset' -o -name '*.offset.lock' \) -mtime +7 2>/dev/null \
+    | while IFS= read -r f; do
+        base="${f%.lock}"; base="${base%.offset}"
+        [ -e "$base.active" ] || rm -f "$f" 2>/dev/null
+      done
+  return 0
+}
