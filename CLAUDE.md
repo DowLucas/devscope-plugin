@@ -221,6 +221,12 @@ claude plugin disable devscope@devscope                  # Disable
   no voice or is unreachable it falls back to Piper if installed (`/devscope:voice setup`),
   else `say`/`spd-say`/`espeak`. What is sent follows the
   privacy mode: `standard` sends no more than its events do. Tests: `tests/voice/run.sh`.
+- **Cut on answer** (`_ds_voice_speak_announcement`): the announcer speaks in a background job in
+  its own process group (`set -m`) and polls the markers it is about every 0.2 s (the approved-command
+  `ps` check once a second). Once none still has the eventId it was armed with, it signals the group
+  *and* every pid in the tree listed beforehand (`_ds_voice_tree`), since GNU `timeout` around the
+  player makes a group of its own. Speech gets `TMPDIR=voice/ann/<timer-pid>`, pruned when that pid
+  is dead, so a cut or a killed timer leaves no WAV behind. Log line: `answered: announcement cut short`.
 - **Speech queue** (`_ds_voice_with_lock`): every speaker (timer announcements, `speak.sh`
   replies and explanations) writes `queue/<ns>-<pid>`; the oldest ticket whose pid is alive is
   next, and the lock (flock, or on macOS a `speak.lock.d/pid` taken over only when that pid is
