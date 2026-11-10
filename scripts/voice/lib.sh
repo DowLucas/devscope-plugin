@@ -772,7 +772,9 @@ _ds_voice_announce_due() {
       [ "$(jq -r '.privacy' "$f" 2>/dev/null)" = "private" ] && privacy=private
     done
     _ds_voice_log "speak: $text"
-    _ds_voice_speak "$text" "$privacy"
+    local -a specs=()
+    for i in "${!files[@]}"; do specs+=("${files[$i]}:${eids[$i]}"); done
+    _ds_voice_speak_announcement "$text" "$privacy" "${specs[@]}"
     for i in "${!files[@]}"; do _ds_voice_bump "${files[$i]}" "${eids[$i]}"; done
     return 0
   fi
@@ -783,9 +785,60 @@ _ds_voice_announce_due() {
     # Summarizing takes a moment; skip a session that was answered meanwhile.
     [ "$(jq -r '.eventId' "$f" 2>/dev/null)" = "${eids[$i]}" ] || continue
     _ds_voice_log "speak: $text"
-    _ds_voice_speak "$text" "$(jq -r '.privacy' "$f" 2>/dev/null)"
+    _ds_voice_speak_announcement "$text" "$(jq -r '.privacy' "$f" 2>/dev/null)" "$f:${eids[$i]}"
     _ds_voice_bump "$f" "${eids[$i]}"
   done
+}
+
+# True while any of these blocks still waits: its marker has the same eventId
+# and, when asked, its approved Bash command is not yet seen running.
+_ds_voice_any_waiting() {  # check-running marker:event-id...
+  local check="$1" spec f
+  shift
+  for spec in "$@"; do
+    f="${spec%:*}"
+    [ "$(jq -r '.eventId' "$f" 2>/dev/null)" = "${spec##*:}" ] || continue
+    [ "$check" = 1 ] && _ds_voice_tool_started "$f" && continue
+    return 0
+  done
+  return 1
+}
+
+# Speak an announcement, cut short once every block it is about was answered
+# (marker cleared or re-armed by a later event, or the approved command is
+# running), so a prompt you already settled is not read out to the end. The
+# speech runs in its own process group (set -m), and every process in its tree
+# is signalled too, since `timeout` (around the player) makes a group of its
+# own. It gets its own TMPDIR (ann/<pid>, pruned once that pid is gone), so a
+# cut or a killed timer leaves no audio file behind.
+_ds_voice_speak_announcement() {  # text privacy marker:event-id...
+  local text="$1" privacy="$2" pid tmpd d pids n=0
+  shift 2
+  for d in "$DS_VOICE_DIR/ann/"*; do
+    [ -d "$d" ] && ! kill -0 "${d##*/}" 2>/dev/null && rm -rf "$d"
+  done
+  tmpd="$DS_VOICE_DIR/ann/$$"
+  mkdir -p "$tmpd" 2>/dev/null || { _ds_voice_speak "$text" "$privacy"; return 0; }
+  set -m
+  ( TMPDIR="$tmpd"; _ds_voice_speak "$text" "$privacy" ) &
+  pid=$!
+  set +m
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 0.2
+    n=$((n + 1))
+    # The process check (ps) once a second, the marker check every time.
+    _ds_voice_any_waiting "$(( n % 5 == 0 ))" "$@" && continue
+    # Listed before the group goes, while the tree still hangs together.
+    pids=$(_ds_voice_tree "$pid")
+    kill -TERM -- "-$pid" 2>/dev/null
+    # shellcheck disable=SC2086
+    kill -TERM $pids 2>/dev/null
+    _ds_voice_log "answered: announcement cut short"
+    break
+  done
+  wait "$pid" 2>/dev/null
+  rm -rf "$tmpd"
+  return 0
 }
 
 # Run a command while holding the global speak lock.
@@ -1109,6 +1162,13 @@ _ds_voice_chunks() {
       }
       if (cur != "" && total < cap) print cur
     }'
+}
+
+# A process and everything it started, one pid per line.
+_ds_voice_tree() {  # pid
+  local c
+  printf '%s\n' "$1"
+  for c in $(pgrep -P "$1" 2>/dev/null); do _ds_voice_tree "$c"; done
 }
 
 # End a process and everything it started (the speech engine under timeout).

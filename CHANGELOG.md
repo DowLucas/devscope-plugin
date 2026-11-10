@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.39.0] - 2026-11-10
+
+### Changed
+- **Answering cuts the announcement short.** When you approve or deny a
+  permission prompt or answer a question while the voice is still announcing
+  it, that announcement stops instead of playing to the end. Only speech
+  about a prompt you settled is cut: a "several sessions need you" sentence
+  stops once all of them are answered, and auto voice and explanations are
+  never cut this way. An approved Bash command counts as answered as soon as it
+  is seen running, which is usually well before it finishes.
+
 ## [0.38.0] - 2026-11-05
 
 ### Added

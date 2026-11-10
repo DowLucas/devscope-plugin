@@ -78,6 +78,27 @@ sleep 2.5
 [ "$(lines)" = 0 ] && [ ! -f "$PENDING/s15.json" ] && ok "approved long-running command: silent" || bad "approved running" "$(spoken)"
 kill "$RUNNING" 2>/dev/null; wait "$RUNNING" 2>/dev/null || true
 configure; reset
+
+# 2c. Answered while the announcement is being spoken: it is cut short. An
+# answer in another session does not cut it.
+TL="$TMP/timeline-cut"; VLOG="$HOME/.cache/devscope/voice/voice.log"
+wait_started() { for _ in $(seq 1 50); do grep -q '^start' "$TL" 2>/dev/null && return 0; sleep 0.1; done; return 1; }
+configure; reset; rm -f "$TL" "$VLOG"; respond '{"text": "cloud wants to run the migration."}'
+DS_VOICE_TIMELINE="$TL" DS_VOICE_TEST_SPEAK_SEC=4 hook permission-request.sh s16 /work/cloud "$PERM"
+if wait_started; then
+  hook tool-complete.sh s16 /work/cloud "$DONE_BASH"
+  sleep 1.5
+  ! grep -q '^end' "$TL" && [ "$(lines)" = 0 ] && grep -q 'announcement cut short' "$VLOG" \
+    && ok "answered mid-announcement: speech cut short" || bad "cut" "$(cat "$TL"; spoken)"
+else bad "cut" "announcement never started"; fi
+configure; reset; rm -f "$TL" "$VLOG"
+DS_VOICE_TIMELINE="$TL" DS_VOICE_TEST_SPEAK_SEC=2 hook permission-request.sh s17 /work/cloud "$PERM"
+if wait_started; then
+  hook tool-complete.sh other-session /work/cloud "$DONE_BASH"
+  wait_spoken 1 4 && grep -q '^end' "$TL" && ! grep -q 'cut short' "$VLOG" 2>/dev/null \
+    && ok "another session's answer does not cut it" || bad "no cut" "$(cat "$TL"; spoken)"
+else bad "no cut" "announcement never started"; fi
+configure; reset
 DS_VOICE_CLAUDE_PID=$$ DEVSCOPE_PRIVACY=private hook permission-request.sh s16 /work/cloud "$PERM"
 wait_spoken 1 5 && ok "not running yet: still announced" || bad "not running" "silent"
 
